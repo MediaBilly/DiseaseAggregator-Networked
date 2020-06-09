@@ -16,7 +16,9 @@ int pipe_size();
 void not_enough_memory();
 string CopyString(string);
 int DestroyString(string*);
+int stringAppend(string*,string);
 void send_data_to_pipe(int,char*,unsigned int,unsigned int);
 char *receive_data_from_pipe(int,unsigned int,boolean);
+int digits(unsigned int);
 
 #endif
