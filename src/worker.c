@@ -267,7 +267,7 @@ int main(int argc, char const *argv[]) {
   }
   // Open receiver fifo to read data from master
   int receiverFd = open(receiver_fifo,O_RDONLY);
-  string masterData = receive_data_from_pipe(receiverFd,bufferSize,TRUE);
+  string masterData = receive_data(receiverFd,bufferSize,TRUE);
   close(receiverFd);
   if (masterData == NULL) {
     return 1;

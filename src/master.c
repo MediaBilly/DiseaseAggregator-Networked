@@ -83,17 +83,17 @@ void respawn_worker() {
     }
     int fd = open(workerData->fifo,O_WRONLY);
     // Send server ip and port to the worker process
-    send_data_to_pipe(fd,serverIp,strlen(serverIp),bufferSize);
-    send_data_to_pipe(fd,"\n",strlen("\n"),bufferSize);
-    send_data_to_pipe(fd,serverPort,strlen(serverPort),bufferSize);
-    send_data_to_pipe(fd,"\n",strlen("\n"),bufferSize);
+    send_data(fd,serverIp,strlen(serverIp),bufferSize);
+    send_data(fd,"\n",strlen("\n"),bufferSize);
+    send_data(fd,serverPort,strlen(serverPort),bufferSize);
+    send_data(fd,"\n",strlen("\n"),bufferSize);
     // Send the old worker's countries to the new one
     ListIterator it = List_CreateIterator(workerData->countriesList);
     while (it != NULL) {
       char country[strlen(ListIterator_GetValue(it)) + 1];
       memcpy(country,ListIterator_GetValue(it),strlen(ListIterator_GetValue(it)) + 1);
       country[strlen(ListIterator_GetValue(it))] = '\n';
-      send_data_to_pipe(fd,country,sizeof(country),bufferSize);
+      send_data(fd,country,sizeof(country),bufferSize);
       ListIterator_MoveToNext(&it);
     }
     close(fd);
@@ -255,10 +255,10 @@ int main(int argc, char const *argv[]) {
         return 1;
       }
       // Send server ip and port to the worker process
-      send_data_to_pipe(fd,serverIp,strlen(serverIp),bufferSize);
-      send_data_to_pipe(fd,"\n",strlen("\n"),bufferSize);
-      send_data_to_pipe(fd,serverPort,strlen(serverPort),bufferSize);
-      send_data_to_pipe(fd,"\n",strlen("\n"),bufferSize);
+      send_data(fd,serverIp,strlen(serverIp),bufferSize);
+      send_data(fd,"\n",strlen("\n"),bufferSize);
+      send_data(fd,serverPort,strlen(serverPort),bufferSize);
+      send_data(fd,"\n",strlen("\n"),bufferSize);
       // Distribute country directories to the worker process
       for (j = 0;j < workerCountries && countriesIt != NULL;j++) {
         // Insert country to the current worker's list
@@ -271,7 +271,7 @@ int main(int argc, char const *argv[]) {
         char country[strlen(ListIterator_GetValue(countriesIt)) + 1];
         memcpy(country,ListIterator_GetValue(countriesIt),strlen(ListIterator_GetValue(countriesIt)) + 1);
         country[strlen(ListIterator_GetValue(countriesIt))] = '\n';
-        send_data_to_pipe(fd,country,sizeof(country),bufferSize);
+        send_data(fd,country,sizeof(country),bufferSize);
         ListIterator_MoveToNext(&countriesIt);
       }
       // Initialize worker's data structure

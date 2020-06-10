@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
 #include "../headers/utils.h"
 
 int pipe_size() {
@@ -51,7 +55,7 @@ int stringAppend(string *str,string substr) {
 }
 
 // Function to send data to a pipe
-void send_data_to_pipe(int fd,char *data,unsigned int dataSize,unsigned int bufferSize) {
+void send_data(int fd,char *data,unsigned int dataSize,unsigned int bufferSize) {
   unsigned int remBytes = dataSize;
   // Send first chunks with specified bufferSize
   while (remBytes >= bufferSize && write(fd,data,bufferSize) > 0) {
@@ -65,7 +69,7 @@ void send_data_to_pipe(int fd,char *data,unsigned int dataSize,unsigned int buff
 }
 
 // Function that reads data from a pipe and returns it to a dynamically allocated array
-char *receive_data_from_pipe(int fd,unsigned int bufferSize,boolean toString) {
+char *receive_data(int fd,unsigned int bufferSize,boolean toString) {
   ssize_t bytes_read = 0;
   char buffer[bufferSize];
   char *tmp,*bytestring = NULL;
@@ -73,6 +77,75 @@ char *receive_data_from_pipe(int fd,unsigned int bufferSize,boolean toString) {
   // Read chunks with specified bufferSize
   while ((bytes_read = read(fd,buffer,bufferSize)) > 0) {
     total_read += bytes_read;
+    if ((tmp = realloc(bytestring,total_read)) == NULL) {
+      not_enough_memory();
+      return NULL;
+    } else {
+      bytestring = tmp;
+    }
+    memcpy(bytestring + total_read - bytes_read,buffer,bytes_read);
+  }
+  if (total_read == 0) {
+    return NULL;
+  }
+  // Set \0 for string ending if needed
+  if (toString) {
+    bytestring = realloc(bytestring,total_read + 1);
+    bytestring[total_read] = 0;
+  }
+  return bytestring;
+}
+
+// Function to send data to a socket
+//(in sockets we send the size first because the connection will remain for all the chunks we send and we will not read until read() returns 0 because otherwise the connection will block)
+void send_data_to_socket(int fd,char *data,unsigned int dataSize,unsigned int bufferSize) {
+  unsigned int remBytes = dataSize;
+  // Send data size
+  uint32_t sizeToSend = htonl(dataSize);
+  if (write(fd,&sizeToSend,sizeof(uint32_t)) < 0) {
+    return;
+  }
+  // Send first chunks with specified bufferSize
+  while (remBytes >= bufferSize && write(fd,data,bufferSize) > 0) {
+    remBytes -= bufferSize;
+    data += bufferSize;
+  }
+  // Send last chunk with size < bufferSize
+  if (remBytes > 0) {
+    write(fd,data,remBytes);
+  }
+}
+
+// Function that reads data from a socker and returns it to a dynamically allocated array
+char *receive_data_from_socket(int fd,unsigned int bufferSize,boolean toString) {
+  // Read size
+  uint32_t dataSize;
+  if (read(fd,&dataSize,sizeof(uint32_t)) <= 0) {
+    // No more data to be read
+    return NULL;
+  }
+  dataSize = ntohl(dataSize);
+  uint32_t remBytes = dataSize;
+  ssize_t bytes_read = 0;
+  char buffer[bufferSize];
+  char *tmp,*bytestring = NULL;
+  unsigned int total_read = 0;
+  // Read chunks with specified bufferSize
+  while (remBytes >= dataSize && (bytes_read = read(fd,buffer,bufferSize)) > 0) {
+    total_read += bytes_read;
+    remBytes -= bytes_read;
+    if ((tmp = realloc(bytestring,total_read)) == NULL) {
+      not_enough_memory();
+      return NULL;
+    } else {
+      bytestring = tmp;
+    }
+    memcpy(bytestring + total_read - bytes_read,buffer,bytes_read);
+  }
+  if (remBytes > 0) {
+    bytes_read = read(fd,buffer,bufferSize);
+    total_read += bytes_read;
+    remBytes -= bytes_read;
     if ((tmp = realloc(bytestring,total_read)) == NULL) {
       not_enough_memory();
       return NULL;
@@ -102,4 +175,13 @@ int digits(unsigned int num) {
     num/=10;
   }
   return count;
+}
+
+// Binds a socket to the given port
+int bind_socket(int socket,short port) {
+  struct sockaddr_in server;
+  server.sin_family = AF_INET;
+  server.sin_addr.s_addr = htonl(INADDR_ANY);
+  server.sin_port = htons(port);
+  return bind(socket,(struct sockaddr*)&server,sizeof(server));
 }

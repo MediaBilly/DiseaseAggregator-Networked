@@ -1,0 +1,20 @@
+/topk-AgeRanges 3 Malaysia EVD 06-01-2020 09-01-2020 
+/diseaseFrequency EVD 03-01-2020 03-01-2020 USA 
+/numPatientAdmissions H1N1 07-01-2020 08-01-2020  
+/searchPatientRecord 684 
+/topk-AgeRanges 4 Italy SARS-COV-2 06-01-2020 08-01-2020 
+/diseaseFrequency SARS-COV-2 01-01-2020 02-01-2020  
+/searchPatientRecord 601 
+/numPatientAdmissions H1N1 04-01-2020 08-01-2020  
+/diseaseFrequency HIV 05-01-2020 05-01-2020  
+/topk-AgeRanges 2 Spain COVID-2019 09-01-2020 09-01-2020 
+/searchPatientRecord 703 
+/numPatientDischarges FLU-2018 07-01-2020 08-01-2020 Mexico 
+/diseaseFrequency FLU-2018 07-01-2020 08-01-2020  
+/searchPatientRecord 918 
+/searchPatientRecord 138 
+/searchPatientRecord 641 
+/numPatientAdmissions COVID-2019 03-01-2020 04-01-2020 Canada 
+/diseaseFrequency EVD 06-01-2020 06-01-2020  
+/diseaseFrequency EVD 08-01-2020 09-01-2020  
+/topk-AgeRanges 1 China HIV 01-01-2020 02-01-2020 

@@ -253,7 +253,7 @@ void AvlTree_topk_Age_Ranges(AvlTree tree,time_t date1,time_t date2,unsigned int
 	for (i = 0;i < k;i++) {
 		char toSend[15];
 		sprintf(toSend,"%s: %.2f%%\n",topkCategories[category[i]],((((double)casesPerAgeCategory[i])/total)*100));
-		send_data_to_pipe(writefd,toSend,strlen(toSend),bufferSize);
+		send_data(writefd,toSend,strlen(toSend),bufferSize);
 	}
 }
 
