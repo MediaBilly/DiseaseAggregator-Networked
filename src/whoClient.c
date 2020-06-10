@@ -15,12 +15,22 @@ struct sockaddr_in serverAddress;
 struct hostent *serverEntry;
 string servIp;
 short servPort;
+boolean threadsCreated = FALSE;
+
+static pthread_mutex_t threadsMutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t threadsCreatedCond = PTHREAD_COND_INITIALIZER;
 
 void usage() {
   fprintf(stderr,"Usage:./whoClient -q queryFile -w numThreads -sp servPort -sip servIP\n");
 }
 
 void* thread_function(void *arg) {
+  // Wait until all the threads are created
+  pthread_mutex_lock(&threadsMutex);
+  while (!threadsCreated) {
+    pthread_cond_wait(&threadsCreatedCond,&threadsMutex);
+  }
+  pthread_mutex_unlock(&threadsMutex);
   // Get queries list
   List queries = (List)arg;
   // Create an iterator for it
@@ -125,12 +135,16 @@ int main(int argc, char const *argv[]) {
   // Create the numThreads
   pthread_t threads[numThreads];
   int threadErr;
+  pthread_mutex_lock(&threadsMutex);
   for (i = 0;i < numThreads;i++) {
     if ((threadErr = pthread_create(&threads[i],NULL,thread_function,(void*)threadQueries[i]))) {
       thread_error("whoClient thread creation error",threadErr);
       return 1;
     }
   }
+  threadsCreated = TRUE;
+  pthread_cond_signal(&threadsCreatedCond);
+  pthread_mutex_unlock(&threadsMutex);
   // Wait for the threads to finish
   int threadStatus;
   for (i = 0;i < numThreads;i++) {

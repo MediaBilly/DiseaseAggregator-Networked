@@ -73,7 +73,7 @@ int main(int argc, char const *argv[]) {
       return 1;
     }
     printf("New connection accepted!\n");
-    // Receive data
+    // Receive data(temporary sequentially until circularBuffer technique (similar to readers & writers problem) is implemented)
     char *receivedData = receive_data_from_socket(clientSocket,BUFFER_SIZE,TRUE);
     while (receivedData != NULL) {
       // Echo back
