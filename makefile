@@ -12,7 +12,7 @@ worker:worker.o list.o hashtable.o patientRecord.o avltree.o utils.o
 	$(CC) $(FLAGS) -o worker worker.o list.o hashtable.o patientRecord.o avltree.o utils.o
 
 whoServer:whoServer.o utils.o
-	$(CC) $(FLAGS) -o whoServer whoServer.o utils.o
+	$(CC) $(FLAGS) -o whoServer whoServer.o utils.o -lpthread
 
 whoClient:whoClient.o list.o utils.o
 	$(CC) $(FLAGS) -o whoClient whoClient.o list.o utils.o -lpthread

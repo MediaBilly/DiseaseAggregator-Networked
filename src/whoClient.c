@@ -38,11 +38,11 @@ void* thread_function(void *arg) {
   // Connect to whoServer
   int serverSocket;
   if ((serverSocket = socket(AF_INET,SOCK_STREAM,0)) < 0) {
-    perror("whoClient socket creation error");
+    perror("whoClient thread socket creation error");
     pthread_exit((void*)EXIT_FAILURE);
   }
   if (connect(serverSocket,(struct sockaddr*)&serverAddress,sizeof(serverAddress)) < 0) {
-    perror("whoClient could not connect to whoServer");
+    perror("whoClient thread could not connect to whoServer");
     pthread_exit((void*)EXIT_FAILURE);
   }
   // Send queries to whoServer

@@ -12,7 +12,6 @@
 #include "../headers/patientRecord.h"
 #include "../headers/treestats.h"
 
-#define MAX(A,B) (((A) > (B)) ? (A) : (B))
 #define ABS(X) (((X) < 0) ? (-(X)) : (X))
 
 char topkCategories[4][6] = {

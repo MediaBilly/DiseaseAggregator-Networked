@@ -8,6 +8,7 @@ typedef char* string;
 typedef char boolean;
 
 #define CEIL(a,b) (((a)+(b)-1)/(b))
+#define MAX(A,B) (((A) > (B)) ? (A) : (B))
 
 #define thread_error(s,e) fprintf(stderr , "%s: %s\n", s, strerror(e))
 
