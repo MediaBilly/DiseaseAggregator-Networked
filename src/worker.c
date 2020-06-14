@@ -5,6 +5,10 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include "../headers/list.h"
 #include "../headers/avltree.h"
 #include "../headers/hashtable.h"
@@ -14,7 +18,7 @@
 
 // Declare global variables
 List countriesList;
-string receiver_fifo,input_dir,serverIp,serverPort;
+string receiver_fifo,input_dir,whoServerIp,whoServerPort;
 unsigned int bufferSize;
 // Maps each country to another hash table that maps country's diseases to two avl trees, one that contains their records sorted by entry date and one that contains statistics sorted by date 
 HashTable recordsHT;
@@ -24,10 +28,14 @@ HashTable recordsByIdHT;
 HashTable countryFilesHT;
 // Runtime flags
 boolean running = TRUE;
-boolean sendStats;
+struct sockaddr_in whoServerAddress;
+// Address and port where the worker listens for queries
+struct sockaddr_in myAddress;
+in_port_t myPort;
+struct hostent *whoServerEntry;
 
 void usage() {
-  fprintf(stderr,"Usage:./worker receiver_fifo input_dir bufferSize [-nostats]\n");
+  fprintf(stderr,"Usage:./worker receiver_fifo input_dir bufferSize\n");
 }
 
 void destroyDiseaseFilestatsFromHT(string filename,void *statsstruct,int argc,va_list valist) {
@@ -50,14 +58,11 @@ void read_input_files() {
   }
   // Foreach country read all the files contained in it's folder and save the records
   ListIterator countriesIterator = List_CreateIterator(countriesList);
-  string statistics;
-  if (sendStats) {
-    statistics = (string)(malloc(1));
-    if (statistics == NULL) {
-      return;
-    }
-    strcpy(statistics,"");
+  string statistics = (string)(malloc(1));
+  if (statistics == NULL) {
+    return;
   }
+  strcpy(statistics,"");
   while (countriesIterator != NULL) {
     string country = ListIterator_GetValue(countriesIterator);
     DIR *dir_ptr;
@@ -84,7 +89,7 @@ void read_input_files() {
           }
           // Maps a disease to a filestat structure to hold summary statistics for that file
           HashTable filestatsHT;
-          if (sendStats && !HashTable_Create(&filestatsHT,200)) {
+          if (!HashTable_Create(&filestatsHT,200)) {
             continue;
           }
           // Insert the file path in the country files hashtable with an empty list
@@ -137,28 +142,26 @@ void read_input_files() {
                       if (diseaseTree != NULL) {
                         AvlTree_Insert(diseaseTree,record);
                         // Update statistics for that file
-                        if (sendStats) {
-                          // Update file statistics 
-                          filestat *stats;
-                          if ((stats = (filestat*)HashTable_SearchKey(filestatsHT,disease)) == NULL) {
-                            if ((stats = (filestat*)malloc(sizeof(filestat))) != NULL) {
-                              memset(stats,0,sizeof(filestat));
-                              if (!HashTable_Insert(filestatsHT,disease,stats)) {
-                                free(stats);
-                                continue;
-                              }
+                        // Update file statistics 
+                        filestat *stats;
+                        if ((stats = (filestat*)HashTable_SearchKey(filestatsHT,disease)) == NULL) {
+                          if ((stats = (filestat*)malloc(sizeof(filestat))) != NULL) {
+                            memset(stats,0,sizeof(filestat));
+                            if (!HashTable_Insert(filestatsHT,disease,stats)) {
+                              free(stats);
+                              continue;
                             }
                           }
-                          if (stats != NULL) {
-                            if (0 <= age && age <= 20) {
-                              stats->years0to20++;
-                            } else if (21 <= age && age <= 40) {
-                              stats->years21to40++;
-                            } else if (41 <= age && age <= 60) {
-                              stats->years41to60++;
-                            } else {
-                              stats->years60plus++;
-                            }
+                        }
+                        if (stats != NULL) {
+                          if (0 <= age && age <= 20) {
+                            stats->years0to20++;
+                          } else if (21 <= age && age <= 40) {
+                            stats->years21to40++;
+                          } else if (41 <= age && age <= 60) {
+                            stats->years41to60++;
+                          } else {
+                            stats->years60plus++;
                           }
                         }
                       }
@@ -177,16 +180,14 @@ void read_input_files() {
             }
           }
           // Generate file's summary statistics to the aggregator
-          if (sendStats) {
-            char header[strlen(date) + strlen(country) + 2];
-            sprintf(header,"%s\n%s\n",date,country);
-            // Append the header
-            stringAppend(&statistics,header);
-            HashTable_ExecuteFunctionForAllKeys(filestatsHT,summaryStatistics,1,&statistics);
-            // Destroy filestats hash table
-            HashTable_ExecuteFunctionForAllKeys(filestatsHT,destroyDiseaseFilestatsFromHT,0);
-            HashTable_Destroy(&filestatsHT,NULL);
-          }
+          char header[strlen(date) + strlen(country) + 2];
+          sprintf(header,"%s\n%s\n",date,country);
+          // Append the header
+          stringAppend(&statistics,header);
+          HashTable_ExecuteFunctionForAllKeys(filestatsHT,summaryStatistics,1,&statistics);
+          // Destroy filestats hash table
+          HashTable_ExecuteFunctionForAllKeys(filestatsHT,destroyDiseaseFilestatsFromHT,0);
+          HashTable_Destroy(&filestatsHT,NULL);
           // Get stats tree
           free(line);
           fclose(recordsFile);
@@ -216,18 +217,47 @@ void read_input_files() {
     ListIterator_MoveToNext(&exitRecordsIt);
   }
   List_Destroy(&exitRecords);
-  if (sendStats) {
-    // Open fifo_worker_to_aggregator to send summary statistics back to the aggregator
-    //int fifo_worker_to_aggregator_fd = open(fifo_worker_to_aggregator,O_WRONLY);
-    // Send the statistics to the aggregator
-   // send_data(fifo_worker_to_aggregator_fd,statistics,strlen(statistics),bufferSize);
-   printf("%s",statistics);
-    // Close fifo_worker_to_aggregator_fd
-    //close(fifo_worker_to_aggregator_fd);
-    free(statistics);
+  // Find whoServer's address
+  if ((whoServerEntry = gethostbyname(whoServerIp)) == NULL) {
+    herror("Worker failed to resolve whoServer's hostname");
+    exit(EXIT_FAILURE);
   }
-  // Never send statistics back ?
-  sendStats = FALSE;
+  whoServerAddress.sin_family = AF_INET;
+  memcpy(&whoServerAddress.sin_addr,whoServerEntry->h_addr,whoServerEntry->h_length);
+  whoServerAddress.sin_port = htons(atoi(whoServerPort));
+  // Connect to whoServer
+  int whoServerSocket;
+  if ((whoServerSocket = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+    perror("Worker could not connect to whoServer");
+    HashTable_Destroy(&recordsByIdHT,NULL);
+    HashTable_Destroy(&recordsHT,NULL);
+    List_Destroy(&countriesList);
+    exit(EXIT_FAILURE);
+  }
+  if (connect(whoServerSocket,(struct sockaddr*)&whoServerAddress,sizeof(whoServerAddress)) < 0) {
+    perror("Worker thread could not connect to whoServer");
+    close(whoServerSocket);
+    HashTable_Destroy(&recordsByIdHT,NULL);
+    HashTable_Destroy(&recordsHT,NULL);
+    List_Destroy(&countriesList);
+    exit(EXIT_FAILURE);
+  }
+  // Send him the port number
+  send_data_to_socket(whoServerSocket,(char*)&myPort,sizeof(myAddress.sin_port),BUFFER_SIZE);
+  // Send him the statistics
+  send_data_to_socket(whoServerSocket,statistics,strlen(statistics),BUFFER_SIZE);
+  free(statistics);
+  // Receive ok answer
+  string answer;
+  if ((answer = receive_data_from_socket(whoServerSocket,BUFFER_SIZE,TRUE)) == NULL || strcmp(answer,"ok")) {
+    close(whoServerSocket);
+    HashTable_Destroy(&recordsByIdHT,NULL);
+    HashTable_Destroy(&recordsHT,NULL);
+    List_Destroy(&countriesList);
+    exit(EXIT_FAILURE);
+  }
+  free(answer);
+  close(whoServerSocket);
 }
 
 void destroyCountryHTdiseaseTables(string disease,void *ht,int argc,va_list valist) {
@@ -243,7 +273,7 @@ int main(int argc, char const *argv[]) {
   signal(SIGINT,stop_execution);
   signal(SIGQUIT,stop_execution);
   // Usage check
-  if (argc < 4 || argc > 5) {
+  if (argc != 4) {
     usage();
     return 1;
   }
@@ -253,18 +283,6 @@ int main(int argc, char const *argv[]) {
   input_dir = (string)argv[2];
   // Read bufferSize;
   bufferSize = atoi(argv[3]);
-  // No stats is no necessary argument. If specified, the worker will not send any stats to the whoServer.
-  // It is set when this worker is a replacement of another one which was terminated
-  if (argc == 5) {
-    if (strcmp(argv[4],"-nostats")) {
-      usage();
-      return 1;
-    } else {
-      sendStats = FALSE;
-    }
-  } else {
-    sendStats = TRUE;
-  }
   // Open receiver fifo to read data from master
   int receiverFd = open(receiver_fifo,O_RDONLY);
   string masterData = receive_data(receiverFd,bufferSize,TRUE);
@@ -272,10 +290,37 @@ int main(int argc, char const *argv[]) {
   if (masterData == NULL) {
     return 1;
   }
+  // Start listening for queries
+  int queriesSocket;
+  if ((queriesSocket = socket(AF_INET,SOCK_STREAM,0)) == -1) {
+    perror("Worker failed to create queries socket");
+    return 1;
+  }
+  myAddress.sin_family = AF_INET;
+  //myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+  myAddress.sin_port = 0;// Bind to the first available port
+  if (bind(queriesSocket,(struct sockaddr*)&myAddress,sizeof(myAddress)) < 0) {
+    perror("Worker failed to bind queries socket");
+    return 1;
+  }
+  // Start listening for whoClients incoming connections
+  if (listen(queriesSocket,1) < 0) {
+    perror("Queries socket failed to start listening to incoming whoClients");
+    return 1;
+  }
+  struct sockaddr_in listenAddr;
+  socklen_t len;
+  if (getsockname(queriesSocket,(struct sockaddr*)&listenAddr,&len) == -1) {
+    perror("getsockname");
+    close(queriesSocket);
+    return 1;
+  }
+  myPort = ntohs(listenAddr.sin_port);
+  printf("Listening for queries on port:%d\n",myPort);
   // Read server ip
-  serverIp = strtok(masterData,"\n");
+  whoServerIp = CopyString(strtok(masterData,"\n"));
   // Read server port
-  serverPort = strtok(NULL,"\n");
+  whoServerPort = CopyString(strtok(NULL,"\n"));
   // Initialize countries list
   if (!List_Initialize(&countriesList)) {
     return 1;
@@ -295,7 +340,6 @@ int main(int argc, char const *argv[]) {
     HashTable_Destroy(&recordsHT,NULL);
     List_Destroy(&countriesList);
   }
-  printf("LISTENING on %s:%s\n",serverIp,serverPort);
   // Read the countries sent by diseaseAggregator;
   string country = strtok(NULL,"\n");
   while (country != NULL) {
@@ -307,8 +351,29 @@ int main(int argc, char const *argv[]) {
   // Read input files
   read_input_files();
   // Accept commands
-  while(running);
-
+  fd_set fdset;
+  int connectedWhoServer;
+  struct sockaddr_in connectedWhoServerAddress;
+  socklen_t connectedWhoServerAddressLength = 0;
+  while(running) {
+    FD_ZERO(&fdset);
+    FD_SET(queriesSocket,&fdset);
+    if (select(queriesSocket + 1,&fdset,NULL,NULL,NULL) != -1) {
+      if (FD_ISSET(queriesSocket,&fdset)) {
+        if ((connectedWhoServer = accept(queriesSocket,(struct sockaddr*)&connectedWhoServerAddress,&connectedWhoServerAddressLength)) < 0) {
+          perror("Worker failed to accept query incoming connection");
+          return 1;
+        }
+        char *query = receive_data_from_socket(connectedWhoServer,BUFFER_SIZE,TRUE);
+        if (query != NULL) {
+          send_data_to_socket(connectedWhoServer,query,strlen(query),BUFFER_SIZE);
+        }
+        close(connectedWhoServer);
+      }
+    }
+  }
+  // Close queries socket
+  close(queriesSocket);
   // Destroy diseas hash tables in country hash table
   HashTable_ExecuteFunctionForAllKeys(recordsHT,destroyCountryHTdiseaseTables,0);
   // Destroy country hash table

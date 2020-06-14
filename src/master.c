@@ -69,7 +69,7 @@ void respawn_worker() {
   else if (newPID == 0) {
     char bufSize[10];
     sprintf(bufSize,"%d",bufferSize);
-    execl("./worker","worker",workerData->fifo,input_dir,bufSize,"-nostats",NULL);
+    execl("./worker","worker",workerData->fifo,input_dir,bufSize,NULL);
     perror("Exec failed");
     exit(1);
   }

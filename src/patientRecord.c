@@ -44,7 +44,7 @@ patientRecord PatientRecord_Create(string recordID,string patientFirstName,strin
   struct tm tmpTime;
   memset(&tmpTime,0,sizeof(struct tm));
   if (strptime(entryDate,"%d-%m-%Y",&tmpTime) == NULL) {
-    printf("entryDate %s parsing failed!\n",entryDate);
+    //fprintf(stderr,"entryDate %s parsing failed!\n",entryDate);
     return NULL;
   } else {
     record->entryDate = mktime(&tmpTime);
@@ -90,17 +90,17 @@ int PatientRecord_Exit(patientRecord record,string exitDateStr) {
         record->exited = TRUE;
         return TRUE;
       } else {
-        fprintf(stderr,"The exitDate of the record with id %s is earlier than it's entryDate. Ignoring update.\n",record->recordID);
+        //fprintf(stderr,"The exitDate of the record with id %s is earlier than it's entryDate. Ignoring update.\n",record->recordID);
         return FALSE;
       }
     } else {
-      fprintf(stderr,"Wrong date format.\n");
+      //fprintf(stderr,"Wrong date format.\n");
       return FALSE;
     }
   } else {
-    fprintf(stderr,"The following patient has already exited: ");
+    //fprintf(stderr,"The following patient has already exited: ");
     string recStr = PatientRecord_ToString(record);
-    fprintf(stderr,"%s\n",recStr);
+    //fprintf(stderr,"%s\n",recStr);
     free(recStr);
     return FALSE;
   }

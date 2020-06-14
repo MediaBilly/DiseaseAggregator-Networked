@@ -120,18 +120,23 @@ void send_data_to_socket(int fd,char *data,unsigned int dataSize,unsigned int bu
 char *receive_data_from_socket(int fd,unsigned int bufferSize,boolean toString) {
   // Read size
   uint32_t dataSize;
-  if (read(fd,&dataSize,sizeof(uint32_t)) <= 0) {
+  ssize_t bytes_read = 0;
+  if ((bytes_read = read(fd,&dataSize,sizeof(uint32_t))) <= 0) {
+    // Error check
+    if (bytes_read == -1) {
+      perror("Error receiving data");
+      return NULL;
+    }
     // No more data to be read
     return NULL;
   }
   dataSize = ntohl(dataSize);
   uint32_t remBytes = dataSize;
-  ssize_t bytes_read = 0;
   char buffer[bufferSize];
   char *tmp,*bytestring = NULL;
   unsigned int total_read = 0;
   // Read chunks with specified bufferSize
-  while (remBytes >= dataSize && (bytes_read = read(fd,buffer,bufferSize)) > 0) {
+  while (remBytes >= bufferSize && (bytes_read = read(fd,buffer,bufferSize)) > 0) {
     total_read += bytes_read;
     remBytes -= bytes_read;
     if ((tmp = realloc(bytestring,total_read)) == NULL) {
@@ -142,8 +147,15 @@ char *receive_data_from_socket(int fd,unsigned int bufferSize,boolean toString) 
     }
     memcpy(bytestring + total_read - bytes_read,buffer,bytes_read);
   }
+  if (bytes_read == -1) {
+    perror("Error receiving data from whoServer");
+    return NULL;
+  }
   if (remBytes > 0) {
-    bytes_read = read(fd,buffer,bufferSize);
+    if ((bytes_read = read(fd,buffer,remBytes)) == -1) {
+      perror("Error receiving data from whoServer");
+      return NULL;
+    }
     total_read += bytes_read;
     remBytes -= bytes_read;
     if ((tmp = realloc(bytestring,total_read)) == NULL) {
@@ -177,7 +189,7 @@ int digits(unsigned int num) {
   return count;
 }
 
-// Binds a socket to the given port
+// Binds a socket to the given port and machine's ip
 int bind_socket(int socket,short port) {
   struct sockaddr_in server;
   server.sin_family = AF_INET;

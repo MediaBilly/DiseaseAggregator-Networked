@@ -48,16 +48,19 @@ void* thread_function(void *arg) {
   // Send queries to whoServer
   while (queriesIt != NULL) {
     send_data_to_socket(serverSocket,ListIterator_GetValue(queriesIt),strlen(ListIterator_GetValue(queriesIt)),BUFFER_SIZE);
-    printf("CLIENT SENDING %s\n",ListIterator_GetValue(queriesIt));
+    //printf("CLIENT SENDING %s\n",ListIterator_GetValue(queriesIt));
     // Get the answer from whoServer
-    string answer = receive_data_from_socket(serverSocket,BUFFER_SIZE,TRUE);
+    string answer;
+    if ((answer = receive_data_from_socket(serverSocket,BUFFER_SIZE,TRUE)) == NULL) {
+      pthread_exit((void*)EXIT_FAILURE);
+    }
     printf("%ld received %s\n",pthread_self(),answer);
     free(answer);
     ListIterator_MoveToNext(&queriesIt);
   }
   // Disconnect from whoServer
   close(serverSocket);
-  pthread_exit((void*)0);
+  pthread_exit((void*)EXIT_SUCCESS);
 }
 
 int main(int argc, char const *argv[]) {
@@ -143,7 +146,7 @@ int main(int argc, char const *argv[]) {
     }
   }
   threadsCreated = TRUE;
-  pthread_cond_signal(&threadsCreatedCond);
+  pthread_cond_broadcast(&threadsCreatedCond);
   pthread_mutex_unlock(&threadsMutex);
   // Wait for the threads to finish
   int threadStatus;
