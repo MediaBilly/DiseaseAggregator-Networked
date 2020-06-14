@@ -13,6 +13,7 @@ struct listnode {
 struct list {
   ListNode head;
   ListNode tail;
+  unsigned int size;
 };
 
 int List_Initialize(List *list) {
@@ -24,6 +25,7 @@ int List_Initialize(List *list) {
   }
   (*list)->head = NULL;
   (*list)->tail = NULL;
+  (*list)->size = 0;
   return TRUE;
 }
 
@@ -46,7 +48,12 @@ int List_Insert(List list,string value) {
     // 1st element
     list->head = list->tail = tmp;
   }
+  list->size++;
   return TRUE;
+}
+
+unsigned int List_Size(List list) {
+  return list != NULL ? list->size : 0;
 }
 
 int List_Destroy(List *list) {

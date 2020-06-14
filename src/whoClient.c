@@ -25,14 +25,18 @@ void usage() {
 }
 
 void* thread_function(void *arg) {
+  // Get queries list
+  List queries = (List)arg;
+  // Check if it is not empty
+  if (List_Size(queries) == 0) {
+    pthread_exit((void*)EXIT_SUCCESS);
+  }
   // Wait until all the threads are created
   pthread_mutex_lock(&threadsMutex);
   while (!threadsCreated) {
     pthread_cond_wait(&threadsCreatedCond,&threadsMutex);
   }
   pthread_mutex_unlock(&threadsMutex);
-  // Get queries list
-  List queries = (List)arg;
   // Create an iterator for it
   ListIterator queriesIt = List_CreateIterator(queries);
   // Connect to whoServer

@@ -300,8 +300,9 @@ int main(int argc, char const *argv[]) {
       close(fd);
     }
   }
-  // Wait until sigint or sigquit is received 
+  // Wait until a signal is received 
   while (running) {
+    pause();
     if (terminatedChild != -1) {
       respawn_worker();
     }

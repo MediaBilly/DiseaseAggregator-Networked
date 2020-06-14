@@ -12,6 +12,7 @@ typedef struct listnode *ListIterator;
 // Define list functions
 int List_Initialize(List*);
 int List_Insert(List,string);
+unsigned int List_Size(List);
 int List_Destroy(List*);
 
 // Define list iterator functions

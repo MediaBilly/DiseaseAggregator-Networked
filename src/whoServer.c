@@ -112,10 +112,58 @@ void* client_thread(void *arg) {
         {
           char* query;
           query = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
+          fd_set workerFdSet;
           while (query != NULL) {
             // Broadcast to all workers
+            FD_ZERO(&workerFdSet);
+            int i,connectedWorkers = 0;
+            // Connect to all the workers
+            for (i = 0;i < totalWorkers;i++) {
+              int wSock;
+              if ((wSock = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+                perror("whoServer could not create socket to communicate with a worker");
+                continue;
+              }
+              struct sockaddr_in workerAddress;
+              workerAddress.sin_family = AF_INET;
+              workerAddress.sin_addr = workers[i].ip;
+              workerAddress.sin_port = htons(workers[i].port);
+              printf("Connecting to %s:%d\n",inet_ntoa(workerAddress.sin_addr),workers[i].port);
+              if (connect(wSock,(struct sockaddr*)&workerAddress,sizeof(workerAddress)) < 0) {
+                perror("whoServer could not connect to a worker");
+                close(wSock);
+                continue;
+              }
+              // Send him the query
+              send_data_to_socket(wSock,query,strlen(query),BUFFER_SIZE);
+              FD_SET(wSock,&workerFdSet);
+              connectedWorkers++;
+            }
+            // Wait for them to answer
+            fd_set tmpFdSet;
+            while (connectedWorkers > 0) {
+              // Copy fd set because fd set functions are destructicve
+              tmpFdSet = workerFdSet;
+              // Wait for at least one worker to answer
+              if (select(FD_SETSIZE,&tmpFdSet,NULL,NULL,NULL) < 0) {
+                perror("select");
+                exit(EXIT_FAILURE);
+              }
+              for (i = 0;i < FD_SETSIZE;i++) {
+                if (FD_ISSET(i,&tmpFdSet)) {
+                  char *workerAns;
+                  if ((workerAns = receive_data_from_socket(i,BUFFER_SIZE,TRUE)) != NULL) {
+                    printf("Answer from worker:%s",workerAns);
+                    free(workerAns);
+                    close(i);
+                    FD_CLR(i,&tmpFdSet);
+                    connectedWorkers--;
+                  }
+                }
+              }
+            }
             // Echo back
-            //printf("%s",query);
+            printf("%s",query);
             send_data_to_socket(conn.socketDescriptor,query,strlen(query),BUFFER_SIZE);
             free(query);
             query = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
@@ -133,21 +181,20 @@ void* client_thread(void *arg) {
           statistics = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
           //printf("%s",statistics);
           free(statistics);
-          send_data_to_socket(conn.socketDescriptor,"ok",strlen("ok"),BUFFER_SIZE);
           // Add the newly created worker to the worker's list
           if ((workers = (Worker*)realloc(workers,(totalWorkers + 1)*sizeof(Worker))) == NULL) {
             not_enough_memory();
             exit(EXIT_FAILURE);
           }
           workers[totalWorkers].ip = conn.ip;
-          workers[totalWorkers++].port = conn.port;
+          workers[totalWorkers++].port = port;
         }
         break;
       default:
         break;
     }
     close(conn.socketDescriptor);
-    printf("Closed connection from %s:%d\n",inet_ntoa(conn.ip),(int)ntohs(conn.port));
+    printf("Closed connection from %s:%d\n",inet_ntoa(conn.ip),conn.port);
   }
   pthread_exit((void*)EXIT_SUCCESS);
 }
@@ -249,6 +296,7 @@ int main(int argc, char const *argv[]) {
   //printf("Listening for incoming whoClients on port:%d\n",queryPortNum);
   int clientSocket;
   struct sockaddr_in clientAddress;
+  memset(&clientAddress,0,sizeof(clientAddress));
   socklen_t clientAddressLength = 0;
   fd_set listeningSockets;
   printf("Listening for incoming workers to send statistics on port:%d\n",statisticsPortNum);
@@ -263,30 +311,46 @@ int main(int argc, char const *argv[]) {
           perror("Failed to accept incoming connection");
           return 1;
         }
-        // Get client's ip address
-        printf("New statistics connection accepted from %s:%d\n",inet_ntoa(clientAddress.sin_addr),(int)ntohs(clientAddress.sin_port));
         // Add the new connection to the circular buffer pool
         Connection newConn;
-        newConn.socketDescriptor = clientSocket;
-        newConn.type = STATISTICS;
-        newConn.ip = clientAddress.sin_addr;
-        newConn.port = clientAddress.sin_port;
-        ConnectionPool_AddConnection(&connctionPool,newConn);
+        struct sockaddr_in acceptedAddress;
+        memset(&acceptedAddress,0,sizeof(acceptedAddress));
+        socklen_t len = sizeof(acceptedAddress);
+        // Get client's ip address
+        if (getsockname(clientSocket,(struct sockaddr*)&acceptedAddress,&len) != -1) {
+          newConn.socketDescriptor = clientSocket;
+          newConn.type = STATISTICS;
+          newConn.ip = acceptedAddress.sin_addr;
+          newConn.port = ntohs(acceptedAddress.sin_port);
+          ConnectionPool_AddConnection(&connctionPool,newConn);
+          printf("New statistics connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
+        } else {
+          perror("getsockname");
+          close(clientSocket);
+        }
       } 
       if (FD_ISSET(queriesSocket,&listeningSockets)) {
         if ((clientSocket = accept(queriesSocket,(struct sockaddr*)&clientAddress,&clientAddressLength)) < 0) {
           perror("Failed to accept incoming connection");
           return 1;
         }
-        // Get client's ip address
-        printf("New queries connection accepted from %s:%d\n",inet_ntoa(clientAddress.sin_addr),(int)ntohs(clientAddress.sin_port));
         // Add the new connection to the circular buffer pool
         Connection newConn;
-        newConn.socketDescriptor = clientSocket;
-        newConn.type = QUERIES;
-        newConn.ip = clientAddress.sin_addr;
-        newConn.port = clientAddress.sin_port;
-        ConnectionPool_AddConnection(&connctionPool,newConn);
+        struct sockaddr_in acceptedAddress;
+        memset(&acceptedAddress,0,sizeof(acceptedAddress));
+        socklen_t len = sizeof(acceptedAddress);
+        // Get client's ip address
+        if (getsockname(clientSocket,(struct sockaddr*)&acceptedAddress,&len) != -1) {
+          newConn.socketDescriptor = clientSocket;
+          newConn.type = QUERIES;
+          newConn.ip = acceptedAddress.sin_addr;
+          newConn.port = ntohs(acceptedAddress.sin_port);
+          ConnectionPool_AddConnection(&connctionPool,newConn);
+          printf("New queries connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
+        } else {
+          perror("getsockname");
+          close(clientSocket);
+        }
       }
     } 
   }

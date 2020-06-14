@@ -8,6 +8,7 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include "../headers/list.h"
 #include "../headers/avltree.h"
@@ -247,16 +248,6 @@ void read_input_files() {
   // Send him the statistics
   send_data_to_socket(whoServerSocket,statistics,strlen(statistics),BUFFER_SIZE);
   free(statistics);
-  // Receive ok answer
-  string answer;
-  if ((answer = receive_data_from_socket(whoServerSocket,BUFFER_SIZE,TRUE)) == NULL || strcmp(answer,"ok")) {
-    close(whoServerSocket);
-    HashTable_Destroy(&recordsByIdHT,NULL);
-    HashTable_Destroy(&recordsHT,NULL);
-    List_Destroy(&countriesList);
-    exit(EXIT_FAILURE);
-  }
-  free(answer);
   close(whoServerSocket);
 }
 
@@ -292,31 +283,32 @@ int main(int argc, char const *argv[]) {
   }
   // Start listening for queries
   int queriesSocket;
-  if ((queriesSocket = socket(AF_INET,SOCK_STREAM,0)) == -1) {
+  if ((queriesSocket = socket(AF_INET,SOCK_STREAM | SOCK_NONBLOCK,0)) == -1) {
     perror("Worker failed to create queries socket");
     return 1;
   }
   myAddress.sin_family = AF_INET;
-  //myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+  myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
   myAddress.sin_port = 0;// Bind to the first available port
   if (bind(queriesSocket,(struct sockaddr*)&myAddress,sizeof(myAddress)) < 0) {
     perror("Worker failed to bind queries socket");
     return 1;
   }
   // Start listening for whoClients incoming connections
-  if (listen(queriesSocket,1) < 0) {
+  if (listen(queriesSocket,100) < 0) {
     perror("Queries socket failed to start listening to incoming whoClients");
     return 1;
   }
   struct sockaddr_in listenAddr;
-  socklen_t len;
+  memset(&listenAddr,0,sizeof(listenAddr));
+  socklen_t len = sizeof(listenAddr);
   if (getsockname(queriesSocket,(struct sockaddr*)&listenAddr,&len) == -1) {
     perror("getsockname");
     close(queriesSocket);
     return 1;
   }
   myPort = ntohs(listenAddr.sin_port);
-  printf("Listening for queries on port:%d\n",myPort);
+  printf("Listening for queries on %s:%d\n",inet_ntoa(listenAddr.sin_addr),myPort);
   // Read server ip
   whoServerIp = CopyString(strtok(masterData,"\n"));
   // Read server port
@@ -364,11 +356,23 @@ int main(int argc, char const *argv[]) {
           perror("Worker failed to accept query incoming connection");
           return 1;
         }
+        // Get accepted connection address
+        struct sockaddr_in acceptedAddress;
+        socklen_t len;
+        if (getsockname(connectedWhoServer,(struct sockaddr*)&acceptedAddress,&len) != -1) {
+          printf("New connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
+        } else {
+          perror("getsockname");
+          close(connectedWhoServer);
+        }
         char *query = receive_data_from_socket(connectedWhoServer,BUFFER_SIZE,TRUE);
+        printf("Received query:%s",query);
         if (query != NULL) {
           send_data_to_socket(connectedWhoServer,query,strlen(query),BUFFER_SIZE);
         }
+        free(query);
         close(connectedWhoServer);
+        printf("%s:%d disconnected\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
       }
     }
   }
@@ -383,5 +387,7 @@ int main(int argc, char const *argv[]) {
   // Destroy country files hash table
   HashTable_Destroy(&countryFilesHT,(int (*)(void**))DestroyString);
   List_Destroy(&countriesList);
+  free(whoServerIp);
+  free(whoServerPort);
   return 0;
 }
