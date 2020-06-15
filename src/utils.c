@@ -54,6 +54,40 @@ int stringAppend(string *str,string substr) {
   return 1;
 }
 
+unsigned int wordCount(string str) {
+  unsigned int count = 0;
+  // Ignore 1st potential gaps
+  while (*str == ' ') str++;
+  while (*str != '\n' && *str != 0) {
+    count++;
+    // Loop through characters
+    while (*str != ' ' && *str != '\n' && *str != 0) str++;
+    // Ignore gaps
+    while (*str == ' ') str++;
+  }
+  return count;
+}
+
+string IgnoreNewLine(string str) {
+  str[strlen(str) - 1] = 0;
+  return str;
+}
+
+string* SplitString(string str,string delimeter) {
+  string *array;
+  if ((array = (string*)malloc(wordCount(str)*sizeof(string))) == NULL) {
+    not_enough_memory();
+    return NULL;
+  }
+  unsigned int index = 0;
+  string tmp = strtok(str,delimeter);
+  while (tmp != NULL) {
+    array[index++] = tmp;
+    tmp = strtok(NULL," ");
+  }
+  return array;
+}
+
 // Function to send data to a pipe
 void send_data(int fd,char *data,unsigned int dataSize,unsigned int bufferSize) {
   unsigned int remBytes = dataSize;

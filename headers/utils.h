@@ -25,6 +25,10 @@ void not_enough_memory();
 string CopyString(string);
 int DestroyString(string*);
 int stringAppend(string*,string);
+// Counts # of words in a string
+unsigned int wordCount(string);
+string IgnoreNewLine(string);
+string* SplitString(string,string);
 void send_data(int,char*,unsigned int,unsigned int);
 char *receive_data(int,unsigned int,boolean);
 void send_data_to_socket(int,char*,unsigned int,unsigned int);

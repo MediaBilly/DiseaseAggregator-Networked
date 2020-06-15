@@ -18,6 +18,7 @@ short servPort;
 boolean threadsCreated = FALSE;
 
 static pthread_mutex_t threadsMutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t screenOutput = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t threadsCreatedCond = PTHREAD_COND_INITIALIZER;
 
 void usage() {
@@ -58,7 +59,9 @@ void* thread_function(void *arg) {
     if ((answer = receive_data_from_socket(serverSocket,BUFFER_SIZE,TRUE)) == NULL) {
       pthread_exit((void*)EXIT_FAILURE);
     }
-    printf("%ld received %s\n",pthread_self(),answer);
+    pthread_mutex_lock(&screenOutput);
+    printf("Answer to query %s:\n%s\n",IgnoreNewLine(ListIterator_GetValue(queriesIt)),answer);
+    pthread_mutex_unlock(&screenOutput);
     free(answer);
     ListIterator_MoveToNext(&queriesIt);
   }

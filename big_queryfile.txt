@@ -1048,9 +1048,6 @@
 /numPatientAdmissions H1N1 01-01-1990 01-01-2003 Greece
 /topk-AgeRanges 10 Greece EVD 01-01-2005 01-01-2010
 /diseaseFrequency HIV 01-01-2003 01-01-2020 Greece
-fff
-ffff
-I am 1053 ----------------------------------------------
 /numPatientDischarges SARS-1 01-01-2017 01-01-2020 Turkey
 /numPatientDischarges EVD 01-01-1000 01-01-2020
 /numPatientDischarges H1N1 01-01-1990 01-01-2003 Greece
@@ -2101,9 +2098,6 @@ I am 1053 ----------------------------------------------
 /numPatientAdmissions H1N1 01-01-1990 01-01-2003 Greece
 /topk-AgeRanges 10 Greece EVD 01-01-2005 01-01-2010
 /diseaseFrequency HIV 01-01-2003 01-01-2020 Greece
-fff
-ffff
-I am 2106 ----------------------------------------------
 /numPatientDischarges SARS-1 01-01-2017 01-01-2020 Turkey
 /numPatientDischarges EVD 01-01-1000 01-01-2020
 /numPatientDischarges H1N1 01-01-1990 01-01-2003 Greece
@@ -3154,6 +3148,3 @@ I am 2106 ----------------------------------------------
 /numPatientAdmissions H1N1 01-01-1990 01-01-2003 Greece
 /topk-AgeRanges 10 Greece EVD 01-01-2005 01-01-2010
 /diseaseFrequency HIV 01-01-2003 01-01-2020 Greece
-fff
-ffff
-I am 3159 ----------------------------------------------

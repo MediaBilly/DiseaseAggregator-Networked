@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -259,6 +260,62 @@ void stop_execution(int signum) {
   running = FALSE;
 }
 
+void diseaseFrequencyAllCountries(string country,void *ht,int argc,va_list valist) {
+  string virusName = va_arg(valist,string);
+  time_t date1 = va_arg(valist,time_t);
+  time_t date2 = va_arg(valist,time_t);
+  unsigned int *result = va_arg(valist,unsigned int*);
+  // Get disease's avl tree
+  AvlTree tree = HashTable_SearchKey((HashTable)ht,virusName);
+  // Check if it really exists
+  if (tree != NULL) {
+    // Update the result with the current country results
+    *result += AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE);
+  }
+}
+
+void numPatientAdmissionsAllCountries(string country,void *ht,int argc,va_list valist) {
+  string virusName = va_arg(valist,string);
+  time_t date1 = va_arg(valist,time_t);
+  time_t date2 = va_arg(valist,time_t);
+  string *answer = va_arg(valist,string*);
+  // Get disease's avl tree
+  AvlTree tree = HashTable_SearchKey((HashTable)ht,virusName);
+  // Check if it really exists
+  if (tree != NULL) {
+    // Send current country results to the worker
+    unsigned int result = AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE);
+    char dataToSend[strlen(country) + digits(result) + 2];
+    sprintf(dataToSend,"%s %u\n",country,result);
+    stringAppend(answer,dataToSend);
+  } else {
+    char dataToSend[strlen(country) + 3];
+    sprintf(dataToSend,"%s 0\n",country);
+    stringAppend(answer,dataToSend);
+  }
+}
+
+void numPatientDischargesAllCountries(string country,void *ht,int argc,va_list valist) {
+  string virusName = va_arg(valist,string);
+  time_t date1 = va_arg(valist,time_t);
+  time_t date2 = va_arg(valist,time_t);
+  string *answer = va_arg(valist,string*);
+  // Get disease's avl tree
+  AvlTree tree = HashTable_SearchKey((HashTable)ht,virusName);
+  // Check if it really exists
+  if (tree != NULL) {
+    // Send current country results to the worker
+    unsigned int result = AvlTree_NumRecordsInDateRange(tree,date1,date2,TRUE);
+    char dataToSend[strlen(country) + digits(result) + 2];
+    sprintf(dataToSend,"%s %u\n",country,result);
+    stringAppend(answer,dataToSend);
+  } else {
+    char dataToSend[strlen(country) + 3];
+    sprintf(dataToSend,"%s 0\n",country);
+    stringAppend(answer,dataToSend);
+  }
+}
+
 int main(int argc, char const *argv[]) {
   // Register signal handlers that handle execution termination
   signal(SIGINT,stop_execution);
@@ -347,6 +404,8 @@ int main(int argc, char const *argv[]) {
   int connectedWhoServer;
   struct sockaddr_in connectedWhoServerAddress;
   socklen_t connectedWhoServerAddressLength = 0;
+  unsigned int cmdArgc;
+  string *args,command;
   while(running) {
     FD_ZERO(&fdset);
     FD_SET(queriesSocket,&fdset);
@@ -358,7 +417,7 @@ int main(int argc, char const *argv[]) {
         }
         // Get accepted connection address
         struct sockaddr_in acceptedAddress;
-        socklen_t len;
+        socklen_t len = 0;
         if (getsockname(connectedWhoServer,(struct sockaddr*)&acceptedAddress,&len) != -1) {
           printf("New connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
         } else {
@@ -368,9 +427,218 @@ int main(int argc, char const *argv[]) {
         char *query = receive_data_from_socket(connectedWhoServer,BUFFER_SIZE,TRUE);
         printf("Received query:%s",query);
         if (query != NULL) {
-          send_data_to_socket(connectedWhoServer,query,strlen(query),BUFFER_SIZE);
+          // Read command(query)
+          cmdArgc = wordCount(query);
+          args = SplitString(query," ");
+          command = args[0];
+          // Execute command
+          if (!strcmp(command,"/diseaseFrequency")) {
+            // Get virusName(disease)
+            string virusName = args[1];
+            // Parse dates
+            struct tm tmpTime;
+            memset(&tmpTime,0,sizeof(struct tm));
+            if (strptime(args[2],"%d-%m-%Y",&tmpTime) != NULL) {
+              time_t date1 = mktime(&tmpTime);
+              if (strptime(args[3],"%d-%m-%Y",&tmpTime) != NULL) {
+                time_t date2 = mktime(&tmpTime);
+                // Date  Parsing done
+                // Check if country was specified
+                if (cmdArgc == 5) {
+                  // Country specified
+                  string country = args[4];
+                  // Get country's disease hash table
+                  HashTable virusHT = HashTable_SearchKey(recordsHT,country);
+                  // Check if specified country exists
+                  if (virusHT != NULL) {
+                    // Get disease's avl tree(if specified virus does not exist returns NULL)
+                    AvlTree tree = HashTable_SearchKey(virusHT,virusName);
+                    // Check if specified virus exists
+                    if (tree != NULL) {
+                      char result[sizeof(unsigned int) + 1];
+                      sprintf(result,"%u",AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE));
+                      send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
+                    } else {
+                      send_data_to_socket(connectedWhoServer,"0",strlen("0"),BUFFER_SIZE);
+                    }
+                  } else {
+                    send_data_to_socket(connectedWhoServer,"0",strlen("0"),BUFFER_SIZE);
+                  }
+                } else if (cmdArgc == 4) {
+                  unsigned int result = 0;
+                  HashTable_ExecuteFunctionForAllKeys(recordsHT,diseaseFrequencyAllCountries,4,virusName,date1,date2,&result);
+                  char resultStr[sizeof(unsigned int)];
+                  sprintf(resultStr,"%u",result);
+                  send_data_to_socket(connectedWhoServer,resultStr,strlen(resultStr),BUFFER_SIZE);
+                } else {
+                  send_data_to_socket(connectedWhoServer,"0",strlen("0"),BUFFER_SIZE);
+                }
+              } else {
+                fprintf(stderr,"date2 parsing failed.\n");
+                send_data_to_socket(connectedWhoServer,"0",strlen("0"),BUFFER_SIZE);
+              }
+            } else {
+              fprintf(stderr,"date1 parsing failed.\n");
+              send_data_to_socket(connectedWhoServer,"0",strlen("0"),BUFFER_SIZE);
+            }
+          } else if (!strcmp(command,"/topk-AgeRanges")) {
+            // Get arguments
+            unsigned int k = atoi(args[1]);
+            string country = args[2];
+            string disease = args[3];
+            // Parse dates
+            struct tm tmpTime;
+            memset(&tmpTime,0,sizeof(struct tm));
+            if (strptime(args[4],"%d-%m-%Y",&tmpTime) != NULL) {
+              time_t date1 = mktime(&tmpTime);
+              if (strptime(args[5],"%d-%m-%Y",&tmpTime) != NULL) {
+                time_t date2 = mktime(&tmpTime);
+                // Date  Parsing done
+                // Get country's disease hash table
+                HashTable diseaseHT = HashTable_SearchKey(recordsHT,country);
+                // Check if it really exists
+                if (diseaseHT != NULL) {
+                  // Get disease's avl tree
+                  AvlTree tree = HashTable_SearchKey(diseaseHT,disease);
+                  // Check if it really exists
+                  if (tree != NULL) {
+                    // Calculate and send result to the whoServer
+                    AvlTree_topk_Age_Ranges(tree,date1,date2,k,connectedWhoServer,BUFFER_SIZE);
+                  } else {
+                    send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+                  }
+                } else {
+                  send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+                }
+              } else {
+                fprintf(stderr,"date2 parsing failed.\n");
+                send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+              }
+            } else {
+              fprintf(stderr,"date1 parsing failed.\n");
+              send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+            }
+          } else if (!strcmp(command,"/searchPatientRecord")) {
+            // Get record id
+            string recordId = args[1];
+            patientRecord rec;
+            if ((rec = HashTable_SearchKey(recordsByIdHT,recordId)) != NULL) {
+              // Found
+              string recStr = PatientRecord_ToString(rec);
+              send_data_to_socket(connectedWhoServer,recStr,strlen(recStr),BUFFER_SIZE);
+              free(recStr);
+            } else {
+              // Not found
+              send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+            }
+          } else if (!strcmp(command,"/numPatientAdmissions")) {
+            // Get virusName(disease)
+            string virusName = args[1];
+            // Parse dates
+            struct tm tmpTime;
+            memset(&tmpTime,0,sizeof(struct tm));
+            if (strptime(args[2],"%d-%m-%Y",&tmpTime) != NULL) {
+              time_t date1 = mktime(&tmpTime);
+              if (strptime(args[3],"%d-%m-%Y",&tmpTime) != NULL) {
+                time_t date2 = mktime(&tmpTime);
+                // Date  Parsing done
+                // Check if country was specified
+                if (cmdArgc == 5) {
+                  // Country specified
+                  string country = args[4];
+                  // Get country's disease hash table
+                  HashTable virusHT = HashTable_SearchKey(recordsHT,country);
+                  // Check if it really exists
+                  if (virusHT != NULL) {
+                    // Get disease's avl tree
+                    AvlTree tree = HashTable_SearchKey(virusHT,virusName);
+                    // Check if it really exists
+                    if (tree != NULL) {
+                      char result[strlen(country) + sizeof(unsigned int) + 2];
+                      sprintf(result,"%s %u\n",country,AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE));
+                      send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
+                    } else {
+                      char result[strlen(country) + sizeof(unsigned int) + 2];
+                      sprintf(result,"nf");
+                      send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
+                    }
+                  } else {
+                    send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+                  }
+                } else if (cmdArgc == 4) {
+                  string answer = (string)malloc(1);
+                  strcpy(answer,"");
+                  HashTable_ExecuteFunctionForAllKeys(recordsHT,numPatientAdmissionsAllCountries,4,virusName,date1,date2,&answer);
+                  send_data_to_socket(connectedWhoServer,answer,strlen(answer),BUFFER_SIZE);
+                  DestroyString(&answer);
+                } else {
+                  send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+                }
+              } else {
+                fprintf(stderr,"date2 parsing failed.\n");
+                send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+              }
+            } else {
+              fprintf(stderr,"date1 parsing failed.\n");
+              send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+            }
+          } else if (!strcmp(command,"/numPatientDischarges")) {
+            // Get virusName(disease)
+            string virusName = args[1];
+            // Parse dates
+            struct tm tmpTime;
+            memset(&tmpTime,0,sizeof(struct tm));
+            if (strptime(args[2],"%d-%m-%Y",&tmpTime) != NULL) {
+              time_t date1 = mktime(&tmpTime);
+              if (strptime(args[3],"%d-%m-%Y",&tmpTime) != NULL) {
+                time_t date2 = mktime(&tmpTime);
+                // Date  Parsing done
+                // Check if country was specified
+                if (cmdArgc == 5) {
+                  // Country specified
+                  string country = args[4];
+                  // Get country's disease hash table
+                  HashTable virusHT = HashTable_SearchKey(recordsHT,country);
+                  // Check if it really exists
+                  if (virusHT != NULL) {
+                    // Get disease's avl tree
+                    AvlTree tree = HashTable_SearchKey(virusHT,virusName);
+                    // Check if it really exists
+                    if (tree != NULL) {
+                      char result[strlen(country) + sizeof(unsigned int) + 2];
+                      sprintf(result,"%s %u\n",country,AvlTree_NumRecordsInDateRange(tree,date1,date2,TRUE));
+                      send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
+                    } else {
+                      char result[strlen(country) + sizeof(unsigned int) + 2];
+                      sprintf(result,"nf");
+                      send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
+                    }
+                  } else {
+                    send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+                  }
+                } else if (cmdArgc == 4) {
+                  string answer = malloc(1);
+                  strcpy(answer,"");
+                  HashTable_ExecuteFunctionForAllKeys(recordsHT,numPatientDischargesAllCountries,4,virusName,date1,date2,&answer);
+                  send_data_to_socket(connectedWhoServer,answer,strlen(answer),BUFFER_SIZE);
+                  free(answer);
+                } else {
+                  send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+                }
+              } else {
+                fprintf(stderr,"date2 parsing failed.\n");
+                send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+              }
+            } else {
+              fprintf(stderr,"date1 parsing failed.\n");
+              send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
+            }
+          } else {
+            send_data_to_socket(connectedWhoServer,"Wrong command\n",strlen("Wrong command\n"),BUFFER_SIZE);
+          }
         }
         free(query);
+        free(args);
         close(connectedWhoServer);
         printf("%s:%d disconnected\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
       }

@@ -112,11 +112,15 @@ void* client_thread(void *arg) {
         {
           char* query;
           query = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
+          printf("whoServer received query:%s\n",query);
           fd_set workerFdSet;
+          string answer;
           while (query != NULL) {
             // Broadcast to all workers
             FD_ZERO(&workerFdSet);
-            int i,connectedWorkers = 0;
+            int i,connectedWorkers = 0,maxFd = -1;
+            answer = (string)malloc(1);
+            strcpy(answer,"");
             // Connect to all the workers
             for (i = 0;i < totalWorkers;i++) {
               int wSock;
@@ -128,7 +132,7 @@ void* client_thread(void *arg) {
               workerAddress.sin_family = AF_INET;
               workerAddress.sin_addr = workers[i].ip;
               workerAddress.sin_port = htons(workers[i].port);
-              printf("Connecting to %s:%d\n",inet_ntoa(workerAddress.sin_addr),workers[i].port);
+              printf("Connecting to worker %s:%d\n",inet_ntoa(workerAddress.sin_addr),workers[i].port);
               if (connect(wSock,(struct sockaddr*)&workerAddress,sizeof(workerAddress)) < 0) {
                 perror("whoServer could not connect to a worker");
                 close(wSock);
@@ -137,34 +141,51 @@ void* client_thread(void *arg) {
               // Send him the query
               send_data_to_socket(wSock,query,strlen(query),BUFFER_SIZE);
               FD_SET(wSock,&workerFdSet);
+              maxFd = MAX(maxFd,wSock);
               connectedWorkers++;
             }
             // Wait for them to answer
-            fd_set tmpFdSet;
+            fd_set readyFdSet;
+            string command = strtok(query," ");
+            unsigned int diseaseFrequencySum = 0;
             while (connectedWorkers > 0) {
               // Copy fd set because fd set functions are destructicve
-              tmpFdSet = workerFdSet;
+              readyFdSet = workerFdSet;
               // Wait for at least one worker to answer
-              if (select(FD_SETSIZE,&tmpFdSet,NULL,NULL,NULL) < 0) {
+              if (select(maxFd + 1,&readyFdSet,NULL,NULL,NULL) < 0) {
                 perror("select");
                 exit(EXIT_FAILURE);
               }
-              for (i = 0;i < FD_SETSIZE;i++) {
-                if (FD_ISSET(i,&tmpFdSet)) {
+              for (i = 0;i <= maxFd;i++) {
+                if (FD_ISSET(i,&readyFdSet)) {
                   char *workerAns;
                   if ((workerAns = receive_data_from_socket(i,BUFFER_SIZE,TRUE)) != NULL) {
-                    printf("Answer from worker:%s",workerAns);
+                    printf("Answer from worker:%s\n",workerAns);
+                    // Handle answer
+                    if (!strcmp(command,"/diseaseFrequency")) {
+                      diseaseFrequencySum += atoi(workerAns);
+                    } else if (!strcmp(command,"/topk-AgeRanges") || !strcmp(command,"/searchPatientRecord") || !strcmp(command,"/numPatientAdmissions") || !strcmp(command,"/numPatientDischarges")) {
+                      if (strcmp(workerAns,"nf")) {
+                        stringAppend(&answer,workerAns);
+                      }
+                    } else {
+                      stringAppend(&answer,workerAns);
+                    }
                     free(workerAns);
                     close(i);
-                    FD_CLR(i,&tmpFdSet);
+                    FD_CLR(i,&workerFdSet);
                     connectedWorkers--;
                   }
                 }
               }
             }
-            // Echo back
-            printf("%s",query);
-            send_data_to_socket(conn.socketDescriptor,query,strlen(query),BUFFER_SIZE);
+            if (!strcmp(command,"/diseaseFrequency")) {
+              char ans[10];
+              sprintf(ans,"%u\n",diseaseFrequencySum);
+              stringAppend(&answer,ans);
+            }
+            send_data_to_socket(conn.socketDescriptor,answer,strlen(answer),BUFFER_SIZE);
+            free(answer);
             free(query);
             query = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
           }
