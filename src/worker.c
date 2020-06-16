@@ -352,7 +352,7 @@ int main(int argc, char const *argv[]) {
     return 1;
   }
   // Start listening for whoClients incoming connections
-  if (listen(queriesSocket,100) < 0) {
+  if (listen(queriesSocket,128) < 0) {
     perror("Queries socket failed to start listening to incoming whoClients");
     return 1;
   }
@@ -559,7 +559,7 @@ int main(int argc, char const *argv[]) {
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     } else {
                       char result[strlen(country) + sizeof(unsigned int) + 2];
-                      sprintf(result,"nf");
+                      sprintf(result,"%s %u\n",country,0);
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     }
                   } else {
@@ -610,7 +610,7 @@ int main(int argc, char const *argv[]) {
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     } else {
                       char result[strlen(country) + sizeof(unsigned int) + 2];
-                      sprintf(result,"nf");
+                      sprintf(result,"%s %u\n",country,0);
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     }
                   } else {

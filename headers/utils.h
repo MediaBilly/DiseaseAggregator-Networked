@@ -29,6 +29,8 @@ int stringAppend(string*,string);
 unsigned int wordCount(string);
 string IgnoreNewLine(string);
 string* SplitString(string,string);
+// Returns true if given string is only a \n feed (used in whoServer's received queries to prevent bugs)
+boolean isOnlyNewLine(string);
 void send_data(int,char*,unsigned int,unsigned int);
 char *receive_data(int,unsigned int,boolean);
 void send_data_to_socket(int,char*,unsigned int,unsigned int);

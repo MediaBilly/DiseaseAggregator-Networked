@@ -56,13 +56,12 @@ void* thread_function(void *arg) {
     //printf("CLIENT SENDING %s\n",ListIterator_GetValue(queriesIt));
     // Get the answer from whoServer
     string answer;
-    if ((answer = receive_data_from_socket(serverSocket,BUFFER_SIZE,TRUE)) == NULL) {
-      pthread_exit((void*)EXIT_FAILURE);
+    if ((answer = receive_data_from_socket(serverSocket,BUFFER_SIZE,TRUE)) != NULL) {
+      pthread_mutex_lock(&screenOutput);
+      printf("Answer to query %s:\n%s\n",IgnoreNewLine(ListIterator_GetValue(queriesIt)),answer);
+      pthread_mutex_unlock(&screenOutput);
+      free(answer);
     }
-    pthread_mutex_lock(&screenOutput);
-    printf("Answer to query %s:\n%s\n",IgnoreNewLine(ListIterator_GetValue(queriesIt)),answer);
-    pthread_mutex_unlock(&screenOutput);
-    free(answer);
     ListIterator_MoveToNext(&queriesIt);
   }
   // Disconnect from whoServer

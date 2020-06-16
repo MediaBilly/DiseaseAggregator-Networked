@@ -116,6 +116,14 @@ void* client_thread(void *arg) {
           fd_set workerFdSet;
           string answer;
           while (query != NULL) {
+            // Check if \n given from client and if so give null answer
+            if (isOnlyNewLine(query)) {
+              free(query);
+              send_data_to_socket(conn.socketDescriptor,"",strlen(""),BUFFER_SIZE);
+              query = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
+              continue;
+            }
+            IgnoreNewLine(query);
             // Broadcast to all workers
             FD_ZERO(&workerFdSet);
             int i,connectedWorkers = 0,maxFd = -1;
@@ -146,7 +154,9 @@ void* client_thread(void *arg) {
             }
             // Wait for them to answer
             fd_set readyFdSet;
-            string command = strtok(query," ");
+            unsigned int cmdArgc = wordCount(query);
+            string *args = SplitString(query," ");
+            string command = args[0];
             unsigned int diseaseFrequencySum = 0;
             while (connectedWorkers > 0) {
               // Copy fd set because fd set functions are destructicve
@@ -184,7 +194,21 @@ void* client_thread(void *arg) {
               sprintf(ans,"%u\n",diseaseFrequencySum);
               stringAppend(&answer,ans);
             }
-            send_data_to_socket(conn.socketDescriptor,answer,strlen(answer),BUFFER_SIZE);
+            if (strcmp(answer,"")) {
+              send_data_to_socket(conn.socketDescriptor,answer,strlen(answer),BUFFER_SIZE);
+            } else {
+              if (!strcmp(command,"/searchPatientRecord")) {
+                send_data_to_socket(conn.socketDescriptor,"Not found\n",strlen("Not found\n"),BUFFER_SIZE);
+              } else if (!strcmp(command,"/topk-AgeRanges")) {
+                send_data_to_socket(conn.socketDescriptor,"Country or disease not found",strlen("Country or disease not found"),BUFFER_SIZE);
+              } else if ((!strcmp(command,"/numPatientAdmissions") || !strcmp(command,"/numPatientDischarges")) && cmdArgc == 5) {
+                char ans[strlen(args[4]) + strlen(" 0")];
+                sprintf(ans,"%s 0\n",IgnoreNewLine(args[4]));
+                send_data_to_socket(conn.socketDescriptor,ans,strlen(ans),BUFFER_SIZE);
+                //send_data_to_socket(conn.socketDescriptor,"Country or disease not found",strlen("Country or disease not found"),BUFFER_SIZE);
+              }
+            }
+            free(args);
             free(answer);
             free(query);
             query = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
@@ -270,19 +294,7 @@ int main(int argc, char const *argv[]) {
     usage();
     return 1;
   }
-  // Create a connection pool (implemented with circular buffer as producer-consumer problem)
-  ConnectionPool_Initialize(&connctionPool,bufferSize);
-  // Create numThreads to handle connections
-  pthread_t threads[numThreads];
-  unsigned int i;
-  int threadErr;
-  for (i = 0;i < numThreads;i++) {
-    if ((threadErr = pthread_create(&threads[i],NULL,client_thread,NULL))) {
-      thread_error("whoServer thread creation error",threadErr);
-      return 1;
-    }
-  }
-  // Create socket taht listens to worker statistics
+  // Create socket that listens to worker statistics
   int statisticsSocket;
   if ((statisticsSocket = socket(AF_INET,SOCK_STREAM |SOCK_NONBLOCK,0)) == -1) {
     perror("Failed to create statistics socket");
@@ -314,7 +326,18 @@ int main(int argc, char const *argv[]) {
     perror("Queries socket failed to start listening to incoming whoClients");
     return 1;
   }
-  //printf("Listening for incoming whoClients on port:%d\n",queryPortNum);
+  // Create a connection pool (implemented with circular buffer as producer-consumer problem)
+  ConnectionPool_Initialize(&connctionPool,bufferSize);
+  // Create numThreads to handle connections
+  pthread_t threads[numThreads];
+  unsigned int i;
+  int threadErr;
+  for (i = 0;i < numThreads;i++) {
+    if ((threadErr = pthread_create(&threads[i],NULL,client_thread,NULL))) {
+      thread_error("whoServer thread creation error",threadErr);
+      return 1;
+    }
+  }
   int clientSocket;
   struct sockaddr_in clientAddress;
   memset(&clientAddress,0,sizeof(clientAddress));

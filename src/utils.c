@@ -69,7 +69,9 @@ unsigned int wordCount(string str) {
 }
 
 string IgnoreNewLine(string str) {
-  str[strlen(str) - 1] = 0;
+  if (str[strlen(str) - 1] == '\n') {
+    str[strlen(str) - 1] = 0;
+  }
   return str;
 }
 
@@ -86,6 +88,10 @@ string* SplitString(string str,string delimeter) {
     tmp = strtok(NULL," ");
   }
   return array;
+}
+
+boolean isOnlyNewLine(string str) {
+  return strlen(str) == 1 && str[0] == '\n';
 }
 
 // Function to send data to a pipe
