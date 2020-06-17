@@ -114,7 +114,6 @@ void* client_thread(void *arg) {
           query = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
           printf("whoServer received query:%s\n",query);
           fd_set workerFdSet;
-          string answer;
           while (query != NULL) {
             // Check if \n given from client and if so give null answer
             if (isOnlyNewLine(query)) {
@@ -127,8 +126,7 @@ void* client_thread(void *arg) {
             // Broadcast to all workers
             FD_ZERO(&workerFdSet);
             int i,connectedWorkers = 0,maxFd = -1;
-            answer = (string)malloc(1);
-            strcpy(answer,"");
+            string answer = NULL;
             // Connect to all the workers
             for (i = 0;i < totalWorkers;i++) {
               int wSock;
@@ -159,18 +157,18 @@ void* client_thread(void *arg) {
             string command = args[0];
             unsigned int diseaseFrequencySum = 0;
             while (connectedWorkers > 0) {
+              //printf("*%d*\n",connectedWorkers);
               // Copy fd set because fd set functions are destructicve
               readyFdSet = workerFdSet;
               // Wait for at least one worker to answer
-              if (select(maxFd + 1,&readyFdSet,NULL,NULL,NULL) < 0) {
+              if (select(FD_SETSIZE,&readyFdSet,NULL,NULL,NULL) < 0) {
                 perror("select");
                 exit(EXIT_FAILURE);
               }
-              for (i = 0;i <= maxFd;i++) {
+              for (i = 0;i < FD_SETSIZE;i++) {
                 if (FD_ISSET(i,&readyFdSet)) {
                   char *workerAns;
                   if ((workerAns = receive_data_from_socket(i,BUFFER_SIZE,TRUE)) != NULL) {
-                    printf("Answer from worker:%s\n",workerAns);
                     // Handle answer
                     if (!strcmp(command,"/diseaseFrequency")) {
                       diseaseFrequencySum += atoi(workerAns);
@@ -179,12 +177,16 @@ void* client_thread(void *arg) {
                         stringAppend(&answer,workerAns);
                       }
                     } else {
-                      stringAppend(&answer,workerAns);
+                      if (answer == NULL) {
+                        stringAppend(&answer,workerAns);
+                      }
                     }
                     free(workerAns);
                     close(i);
                     FD_CLR(i,&workerFdSet);
                     connectedWorkers--;
+                  } else {
+                    printf("COULD NOT READ ANSWER FROM WORKER on query %s\n",command);
                   }
                 }
               }
@@ -194,7 +196,7 @@ void* client_thread(void *arg) {
               sprintf(ans,"%u\n",diseaseFrequencySum);
               stringAppend(&answer,ans);
             }
-            if (strcmp(answer,"")) {
+            if (answer != NULL) {
               send_data_to_socket(conn.socketDescriptor,answer,strlen(answer),BUFFER_SIZE);
             } else {
               if (!strcmp(command,"/searchPatientRecord")) {
@@ -203,9 +205,8 @@ void* client_thread(void *arg) {
                 send_data_to_socket(conn.socketDescriptor,"Country or disease not found",strlen("Country or disease not found"),BUFFER_SIZE);
               } else if ((!strcmp(command,"/numPatientAdmissions") || !strcmp(command,"/numPatientDischarges")) && cmdArgc == 5) {
                 char ans[strlen(args[4]) + strlen(" 0")];
-                sprintf(ans,"%s 0\n",IgnoreNewLine(args[4]));
+                sprintf(ans,"%s 0\n",args[4]);
                 send_data_to_socket(conn.socketDescriptor,ans,strlen(ans),BUFFER_SIZE);
-                //send_data_to_socket(conn.socketDescriptor,"Country or disease not found",strlen("Country or disease not found"),BUFFER_SIZE);
               }
             }
             free(args);
@@ -218,9 +219,8 @@ void* client_thread(void *arg) {
       case STATISTICS:
         {
           char *portData;
-          portData = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,FALSE);
-          in_port_t port;
-          memcpy(&port,portData,sizeof(port));
+          portData = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
+          in_port_t port = atoi(portData);
           free(portData);
           char *statistics;
           statistics = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);

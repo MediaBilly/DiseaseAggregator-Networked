@@ -1,1 +1,1 @@
-/searchPatientRecord 10000 
+/numPatientAdmissions EVD 08-05-2001 01-01-2002 United_Kingdom

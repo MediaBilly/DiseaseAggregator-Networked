@@ -46,11 +46,19 @@ int DestroyString(string *str) {
 
 // Appends substr to str's end
 int stringAppend(string *str,string substr) {
-  if ((*str = realloc(*str,strlen(*str) + strlen(substr) + 1)) == NULL) {
-      printf("Not enough memory.\n");
+  if (*str != NULL) {
+    if ((*str = (string)realloc(*str,strlen(*str) + strlen(substr) + 1)) == NULL) {
+        printf("Not enough memory.\n");
+        return 0;
+    }
+    strcat(*str,substr);
+  } else {
+    if ((*str = (string)malloc(strlen(substr) + 1)) == NULL) {
+      not_enough_memory();
       return 0;
+    }
+    strcpy(*str,substr);
   }
-  strcpy(*str + strlen(*str),substr);
   return 1;
 }
 
@@ -70,7 +78,7 @@ unsigned int wordCount(string str) {
 
 string IgnoreNewLine(string str) {
   if (str[strlen(str) - 1] == '\n') {
-    str[strlen(str) - 1] = 0;
+    str[strlen(str) - 1] = ' ';
   }
   return str;
 }
@@ -82,10 +90,11 @@ string* SplitString(string str,string delimeter) {
     return NULL;
   }
   unsigned int index = 0;
-  string tmp = strtok(str,delimeter);
+  char *buffer;
+  string tmp = strtok_r(str,delimeter,&buffer);
   while (tmp != NULL) {
     array[index++] = tmp;
-    tmp = strtok(NULL," ");
+    tmp = strtok_r(NULL," ",&buffer);
   }
   return array;
 }
@@ -112,17 +121,15 @@ void send_data(int fd,char *data,unsigned int dataSize,unsigned int bufferSize) 
 char *receive_data(int fd,unsigned int bufferSize,boolean toString) {
   ssize_t bytes_read = 0;
   char buffer[bufferSize];
-  char *tmp,*bytestring = NULL;
+  char *bytestring = NULL;
   unsigned int total_read = 0;
   // Read chunks with specified bufferSize
   while ((bytes_read = read(fd,buffer,bufferSize)) > 0) {
     total_read += bytes_read;
-    if ((tmp = realloc(bytestring,total_read)) == NULL) {
+    if ((bytestring = realloc(bytestring,total_read)) == NULL) {
       not_enough_memory();
       return NULL;
-    } else {
-      bytestring = tmp;
-    }
+    } 
     memcpy(bytestring + total_read - bytes_read,buffer,bytes_read);
   }
   if (total_read == 0) {
@@ -173,18 +180,17 @@ char *receive_data_from_socket(int fd,unsigned int bufferSize,boolean toString) 
   dataSize = ntohl(dataSize);
   uint32_t remBytes = dataSize;
   char buffer[bufferSize];
-  char *tmp,*bytestring = NULL;
+  char *bytestring;
   unsigned int total_read = 0;
+  // Allocate memory for the received message
+  if ((bytestring = malloc(toString ? dataSize + 1 : dataSize)) == NULL) {
+    not_enough_memory();
+    return NULL;
+  }
   // Read chunks with specified bufferSize
   while (remBytes >= bufferSize && (bytes_read = read(fd,buffer,bufferSize)) > 0) {
     total_read += bytes_read;
     remBytes -= bytes_read;
-    if ((tmp = realloc(bytestring,total_read)) == NULL) {
-      not_enough_memory();
-      return NULL;
-    } else {
-      bytestring = tmp;
-    }
     memcpy(bytestring + total_read - bytes_read,buffer,bytes_read);
   }
   if (bytes_read == -1) {
@@ -198,12 +204,6 @@ char *receive_data_from_socket(int fd,unsigned int bufferSize,boolean toString) 
     }
     total_read += bytes_read;
     remBytes -= bytes_read;
-    if ((tmp = realloc(bytestring,total_read)) == NULL) {
-      not_enough_memory();
-      return NULL;
-    } else {
-      bytestring = tmp;
-    }
     memcpy(bytestring + total_read - bytes_read,buffer,bytes_read);
   }
   if (total_read == 0) {
@@ -211,7 +211,6 @@ char *receive_data_from_socket(int fd,unsigned int bufferSize,boolean toString) 
   }
   // Set \0 for string ending if needed
   if (toString) {
-    bytestring = realloc(bytestring,total_read + 1);
     bytestring[total_read] = 0;
   }
   return bytestring;

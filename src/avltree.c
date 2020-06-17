@@ -249,8 +249,7 @@ void AvlTree_topk_Age_Ranges(AvlTree tree,time_t date1,time_t date2,unsigned int
 			}
 		}
 	}
-	string ans = (string)malloc(1);
-	strcpy(ans,"");
+	string ans = NULL;
 	for (i = 0;i < k;i++) {
 		char toSend[15];
 		sprintf(toSend,"%s: %.2f%%\n",topkCategories[category[i]],casesPerAgeCategory[i] > 0 ?((((double)casesPerAgeCategory[i])/total)*100) : (double)0);

@@ -60,11 +60,7 @@ void read_input_files() {
   }
   // Foreach country read all the files contained in it's folder and save the records
   ListIterator countriesIterator = List_CreateIterator(countriesList);
-  string statistics = (string)(malloc(1));
-  if (statistics == NULL) {
-    return;
-  }
-  strcpy(statistics,"");
+  string statistics = NULL;
   while (countriesIterator != NULL) {
     string country = ListIterator_GetValue(countriesIterator);
     DIR *dir_ptr;
@@ -245,7 +241,9 @@ void read_input_files() {
     exit(EXIT_FAILURE);
   }
   // Send him the port number
-  send_data_to_socket(whoServerSocket,(char*)&myPort,sizeof(myAddress.sin_port),BUFFER_SIZE);
+  char portStr[digits(myPort) + 1];
+  sprintf(portStr,"%d",myPort);
+  send_data_to_socket(whoServerSocket,portStr,strlen(portStr),BUFFER_SIZE);
   // Send him the statistics
   send_data_to_socket(whoServerSocket,statistics,strlen(statistics),BUFFER_SIZE);
   free(statistics);
@@ -425,7 +423,7 @@ int main(int argc, char const *argv[]) {
           close(connectedWhoServer);
         }
         char *query = receive_data_from_socket(connectedWhoServer,BUFFER_SIZE,TRUE);
-        printf("Received query:%s",query);
+        printf("Received query:%s\n",query);
         if (query != NULL) {
           // Read command(query)
           cmdArgc = wordCount(query);
@@ -455,8 +453,9 @@ int main(int argc, char const *argv[]) {
                     AvlTree tree = HashTable_SearchKey(virusHT,virusName);
                     // Check if specified virus exists
                     if (tree != NULL) {
-                      char result[sizeof(unsigned int) + 1];
-                      sprintf(result,"%u",AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE));
+                      unsigned int ans = AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE);
+                      char result[digits(ans) + 1];
+                      sprintf(result,"%u",ans);
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     } else {
                       send_data_to_socket(connectedWhoServer,"0",strlen("0"),BUFFER_SIZE);
@@ -467,7 +466,7 @@ int main(int argc, char const *argv[]) {
                 } else if (cmdArgc == 4) {
                   unsigned int result = 0;
                   HashTable_ExecuteFunctionForAllKeys(recordsHT,diseaseFrequencyAllCountries,4,virusName,date1,date2,&result);
-                  char resultStr[sizeof(unsigned int)];
+                  char resultStr[digits(result) + 1];
                   sprintf(resultStr,"%u",result);
                   send_data_to_socket(connectedWhoServer,resultStr,strlen(resultStr),BUFFER_SIZE);
                 } else {
@@ -554,11 +553,12 @@ int main(int argc, char const *argv[]) {
                     AvlTree tree = HashTable_SearchKey(virusHT,virusName);
                     // Check if it really exists
                     if (tree != NULL) {
-                      char result[strlen(country) + sizeof(unsigned int) + 2];
-                      sprintf(result,"%s %u\n",country,AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE));
+                      unsigned int ans = AvlTree_NumRecordsInDateRange(tree,date1,date2,FALSE);
+                      char result[strlen(country) + digits(ans) + 2];
+                      sprintf(result,"%s %u\n",country,ans);
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     } else {
-                      char result[strlen(country) + sizeof(unsigned int) + 2];
+                      char result[strlen(country) + 3];
                       sprintf(result,"%s %u\n",country,0);
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     }
@@ -566,8 +566,7 @@ int main(int argc, char const *argv[]) {
                     send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
                   }
                 } else if (cmdArgc == 4) {
-                  string answer = (string)malloc(1);
-                  strcpy(answer,"");
+                  string answer = NULL;
                   HashTable_ExecuteFunctionForAllKeys(recordsHT,numPatientAdmissionsAllCountries,4,virusName,date1,date2,&answer);
                   send_data_to_socket(connectedWhoServer,answer,strlen(answer),BUFFER_SIZE);
                   DestroyString(&answer);
@@ -605,11 +604,12 @@ int main(int argc, char const *argv[]) {
                     AvlTree tree = HashTable_SearchKey(virusHT,virusName);
                     // Check if it really exists
                     if (tree != NULL) {
-                      char result[strlen(country) + sizeof(unsigned int) + 2];
-                      sprintf(result,"%s %u\n",country,AvlTree_NumRecordsInDateRange(tree,date1,date2,TRUE));
+                      unsigned int ans = AvlTree_NumRecordsInDateRange(tree,date1,date2,TRUE);
+                      char result[strlen(country) + digits(ans) + 2];
+                      sprintf(result,"%s %u\n",country,ans);
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     } else {
-                      char result[strlen(country) + sizeof(unsigned int) + 2];
+                      char result[strlen(country) + 3];
                       sprintf(result,"%s %u\n",country,0);
                       send_data_to_socket(connectedWhoServer,result,strlen(result),BUFFER_SIZE);
                     }
@@ -617,8 +617,7 @@ int main(int argc, char const *argv[]) {
                     send_data_to_socket(connectedWhoServer,"nf",strlen("nf"),BUFFER_SIZE);
                   }
                 } else if (cmdArgc == 4) {
-                  string answer = malloc(1);
-                  strcpy(answer,"");
+                  string answer = NULL;
                   HashTable_ExecuteFunctionForAllKeys(recordsHT,numPatientDischargesAllCountries,4,virusName,date1,date2,&answer);
                   send_data_to_socket(connectedWhoServer,answer,strlen(answer),BUFFER_SIZE);
                   free(answer);
