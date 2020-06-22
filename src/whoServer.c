@@ -69,10 +69,10 @@ void* client_thread(void *arg) {
               // Send him the query
               if (send_data_to_socket(wSock,query,strlen(query),BUFFER_SIZE)) {
                 printf("Thread %ld connected to worker %s:%d for query:%s\n",pthread_self(),inet_ntoa(workers[i].ip),workers[i].port,query);
+                FD_SET(wSock,&workerFdSet);
+                maxFd = MAX(maxFd,wSock);
+                connectedWorkers++;
               }
-              FD_SET(wSock,&workerFdSet);
-              maxFd = MAX(maxFd,wSock);
-              connectedWorkers++;
             }
             // Wait for them to answer
             fd_set readyFdSet;

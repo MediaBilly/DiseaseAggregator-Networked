@@ -1,1 +1,1 @@
-/searchPatientRecord 1000
+/numPatientAdmissions H1N1 04-01-2000 08-01-2020

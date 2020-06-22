@@ -302,10 +302,10 @@ int main(int argc, char const *argv[]) {
   }
   // Wait until a signal is received 
   while (running) {
-    pause();
     if (terminatedChild != -1) {
       respawn_worker();
     }
+    pause();
   }
   // Unregister SIGCHLD handler because when the master finishes execution we do not need to respawn children
   signal(SIGCHLD,SIG_DFL);
