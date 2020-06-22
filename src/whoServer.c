@@ -105,6 +105,7 @@ void* client_thread(void *arg) {
                         stringAppend(&answer,workerAns);
                       }
                     }
+                    printf("Worker answer:%s\n",workerAns);
                     free(workerAns);
                     FD_CLR(i,&workerFdSet);
                     connectedWorkers--;
@@ -150,6 +151,7 @@ void* client_thread(void *arg) {
           free(statistics);
           char numThreadsStr[digits(numThreads) + 1];
           sprintf(numThreadsStr,"%u",numThreads);
+          pthread_mutex_lock(&workersMutex);
           // Add the newly created worker to the worker's list
           if ((workers = (Worker*)realloc(workers,(totalWorkers + 1)*sizeof(Worker))) == NULL) {
             not_enough_memory();
@@ -173,6 +175,7 @@ void* client_thread(void *arg) {
             continue;
           }
           workers[totalWorkers++].socketFd = wSock;
+          pthread_mutex_unlock(&workersMutex);
         }
         break;
       default:
@@ -287,10 +290,9 @@ int main(int argc, char const *argv[]) {
         // Add the new connection to the circular buffer pool
         Connection newConn;
         struct sockaddr_in acceptedAddress;
-        memset(&acceptedAddress,0,sizeof(acceptedAddress));
         socklen_t len = sizeof(acceptedAddress);
         // Get client's ip address
-        if (getsockname(clientSocket,(struct sockaddr*)&acceptedAddress,&len) != -1) {
+        if (getpeername(clientSocket,(struct sockaddr*)&acceptedAddress,&len) != -1) {
           newConn.socketDescriptor = clientSocket;
           newConn.type = STATISTICS;
           newConn.ip = acceptedAddress.sin_addr;
@@ -298,7 +300,7 @@ int main(int argc, char const *argv[]) {
           ConnectionPool_AddConnection(&connectionPool,newConn);
           printf("New statistics connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
         } else {
-          perror("getsockname");
+          perror("getpeername");
           close(clientSocket);
         }
       } 

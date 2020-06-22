@@ -415,11 +415,11 @@ int main(int argc, char const *argv[]) {
         }
         // Get accepted connection address
         struct sockaddr_in acceptedAddress;
-        socklen_t len = 0;
-        if (getsockname(connectedWhoServer,(struct sockaddr*)&acceptedAddress,&len) != -1) {
+        socklen_t len = sizeof(acceptedAddress);
+        if (getpeername(connectedWhoServer,(struct sockaddr*)&acceptedAddress,&len) != -1) {
           printf("%s) New connection accepted from %s:%d\n",receiver_fifo,inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
         } else {
-          perror("getsockname");
+          perror("getpeername");
           close(connectedWhoServer);
           continue;
         }

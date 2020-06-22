@@ -1,5 +1,5 @@
 CC = gcc
-FLAGS = -Wall
+FLAGS = -Wall -g3
 TARGETS = master worker whoServer whoClient
 SRC_DIR = ./src
 
@@ -8,8 +8,8 @@ all:$(TARGETS)
 master:master.o utils.o hashtable.o list.o
 	$(CC) $(FLAGS) -o master master.o utils.o hashtable.o list.o -lpthread
 
-worker:worker.o list.o hashtable.o patientRecord.o avltree.o connectionPool.o utils.o
-	$(CC) $(FLAGS) -o worker worker.o list.o hashtable.o patientRecord.o avltree.o connectionPool.o utils.o -lpthread
+worker:worker.o list.o hashtable.o patientRecord.o avltree.o utils.o
+	$(CC) $(FLAGS) -o worker worker.o list.o hashtable.o patientRecord.o avltree.o utils.o -lpthread
 
 whoServer:whoServer.o connectionPool.o utils.o
 	$(CC) $(FLAGS) -o whoServer whoServer.o connectionPool.o utils.o -lpthread
