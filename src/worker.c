@@ -417,14 +417,15 @@ int main(int argc, char const *argv[]) {
         struct sockaddr_in acceptedAddress;
         socklen_t len = 0;
         if (getsockname(connectedWhoServer,(struct sockaddr*)&acceptedAddress,&len) != -1) {
-          printf("New connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
+          printf("%s) New connection accepted from %s:%d\n",receiver_fifo,inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
         } else {
           perror("getsockname");
           close(connectedWhoServer);
+          continue;
         }
         char *query = receive_data_from_socket(connectedWhoServer,BUFFER_SIZE,TRUE);
-        printf("Received query:%s\n",query);
-        if (query != NULL) {
+        while (query != NULL) {
+          printf("%s received query:%s\n",receiver_fifo,query);
           // Read command(query)
           cmdArgc = wordCount(query);
           args = SplitString(query," ");
@@ -635,9 +636,10 @@ int main(int argc, char const *argv[]) {
           } else {
             send_data_to_socket(connectedWhoServer,"Wrong command\n",strlen("Wrong command\n"),BUFFER_SIZE);
           }
-        }
-        free(query);
-        free(args);
+          free(query);
+          free(args);
+          query = receive_data_from_socket(connectedWhoServer,BUFFER_SIZE,TRUE);
+        } 
         close(connectedWhoServer);
         printf("%s:%d disconnected\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
       }

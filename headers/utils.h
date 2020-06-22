@@ -33,7 +33,7 @@ string* SplitString(string,string);
 boolean isOnlyNewLine(string);
 void send_data(int,char*,unsigned int,unsigned int);
 char *receive_data(int,unsigned int,boolean);
-void send_data_to_socket(int,char*,unsigned int,unsigned int);
+boolean send_data_to_socket(int,char*,unsigned int,unsigned int);
 char *receive_data_from_socket(int,unsigned int,boolean);
 int digits(unsigned int);
 int bind_socket(int socket,short port);

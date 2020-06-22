@@ -155,9 +155,8 @@ int main(int argc, char const *argv[]) {
   pthread_cond_broadcast(&threadsCreatedCond);
   pthread_mutex_unlock(&threadsMutex);
   // Wait for the threads to finish
-  int threadStatus;
   for (i = 0;i < numThreads;i++) {
-    if ((threadErr = pthread_join(threads[i],(void**)&threadStatus))) {
+    if ((threadErr = pthread_join(threads[i],NULL))) {
       thread_error("whoClient thread join error",threadErr);
     }
   }

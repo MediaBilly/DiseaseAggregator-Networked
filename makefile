@@ -1,5 +1,5 @@
 CC = gcc
-FLAGS = -Wall -g3
+FLAGS = -Wall
 TARGETS = master worker whoServer whoClient
 SRC_DIR = ./src
 
@@ -8,11 +8,11 @@ all:$(TARGETS)
 master:master.o utils.o hashtable.o list.o
 	$(CC) $(FLAGS) -o master master.o utils.o hashtable.o list.o -lpthread
 
-worker:worker.o list.o hashtable.o patientRecord.o avltree.o utils.o
-	$(CC) $(FLAGS) -o worker worker.o list.o hashtable.o patientRecord.o avltree.o utils.o -lpthread
+worker:worker.o list.o hashtable.o patientRecord.o avltree.o connectionPool.o utils.o
+	$(CC) $(FLAGS) -o worker worker.o list.o hashtable.o patientRecord.o avltree.o connectionPool.o utils.o -lpthread
 
-whoServer:whoServer.o utils.o
-	$(CC) $(FLAGS) -o whoServer whoServer.o utils.o -lpthread
+whoServer:whoServer.o connectionPool.o utils.o
+	$(CC) $(FLAGS) -o whoServer whoServer.o connectionPool.o utils.o -lpthread
 
 whoClient:whoClient.o list.o utils.o
 	$(CC) $(FLAGS) -o whoClient whoClient.o list.o utils.o -lpthread
@@ -40,6 +40,9 @@ patientRecord.o:$(SRC_DIR)/patientRecord.c
 
 avltree.o:$(SRC_DIR)/avltree.c
 	$(CC) $(FLAGS) -o avltree.o -c $(SRC_DIR)/avltree.c -lpthread
+
+connectionPool.o:$(SRC_DIR)/connectionPool.c
+	$(CC) $(FLAGS) -o connectionPool.o -c $(SRC_DIR)/connectionPool.c -lpthread
 
 utils.o:$(SRC_DIR)/utils.c
 	$(CC) $(FLAGS) -o utils.o -c $(SRC_DIR)/utils.c -lpthread

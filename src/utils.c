@@ -145,12 +145,13 @@ char *receive_data(int fd,unsigned int bufferSize,boolean toString) {
 
 // Function to send data to a socket
 //(in sockets we send the size first because the connection will remain for all the chunks we send and we will not read until read() returns 0 because otherwise the connection will block)
-void send_data_to_socket(int fd,char *data,unsigned int dataSize,unsigned int bufferSize) {
+boolean send_data_to_socket(int fd,char *data,unsigned int dataSize,unsigned int bufferSize) {
   unsigned int remBytes = dataSize;
   // Send data size
   uint32_t sizeToSend = htonl(dataSize);
   if (write(fd,&sizeToSend,sizeof(uint32_t)) < 0) {
-    return;
+    perror("Failed to send data to socket");
+    return FALSE;
   }
   // Send first chunks with specified bufferSize
   while (remBytes >= bufferSize && write(fd,data,bufferSize) > 0) {
@@ -159,8 +160,12 @@ void send_data_to_socket(int fd,char *data,unsigned int dataSize,unsigned int bu
   }
   // Send last chunk with size < bufferSize
   if (remBytes > 0) {
-    write(fd,data,remBytes);
+    if (write(fd,data,remBytes) < 0) {
+      perror("Failed to send data to socket");
+      return FALSE;
+    }
   }
+  return TRUE;
 }
 
 // Function that reads data from a socker and returns it to a dynamically allocated array
@@ -168,6 +173,7 @@ char *receive_data_from_socket(int fd,unsigned int bufferSize,boolean toString) 
   // Read size
   uint32_t dataSize;
   ssize_t bytes_read = 0;
+  
   if ((bytes_read = read(fd,&dataSize,sizeof(uint32_t))) <= 0) {
     // Error check
     if (bytes_read == -1) {

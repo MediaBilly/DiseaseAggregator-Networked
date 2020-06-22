@@ -10,93 +10,28 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <signal.h>
+#include "../headers/connectionPool.h"
 #include "../headers/utils.h"
-
-// Definitions for connection pool with circular buffer(Similar to producer-consumer).
-// Here we have 1 producer(the main thread) and numThreads consumers
-enum ConnectionType {STATISTICS = 0,QUERIES = 1};
 
 #define MAX_STATISTICS_CONNECTIONS 1000
 #define MAX_QUERIES_CONNECTIONS 1000
-
-typedef struct {
-  int socketDescriptor;
-  enum ConnectionType type;
-  struct in_addr ip;
-  in_port_t port;
-} Connection;
-
-typedef struct {
-	Connection *connections;
-	unsigned int size;
-	unsigned int start;
-	unsigned int end;
-	unsigned int count;
-} ConnectionPool;
 
 // Worker info definition
 typedef struct {
   struct in_addr ip;
   in_port_t port;
+  int socketFd;
 } Worker;
 
 // Global variables
-pthread_mutex_t poolMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t pool_nonempty = PTHREAD_COND_INITIALIZER;
-pthread_cond_t pool_nonfull = PTHREAD_COND_INITIALIZER;
-ConnectionPool connctionPool;
+ConnectionPool connectionPool;
 boolean running = TRUE;
 // Array of all workers
 Worker *workers = NULL;
 unsigned int totalWorkers = 0;
-
-/* Connection Pool functions */
-
-void ConnectionPool_Initialize(ConnectionPool* pool,unsigned int size) {
-  if ((pool->connections = (Connection*)malloc(size*sizeof(Connection))) == NULL) {
-    not_enough_memory();
-    exit(EXIT_FAILURE);
-  }
-  pool->size = size;
-  pool->start = pool->end = pool->count = 0;
-}
-
-void ConnectionPool_AddConnection(ConnectionPool* pool,Connection conn) {
-  pthread_mutex_lock(&poolMutex);
-  // Wait until buffer is not full
-  while (pool->count == pool->size) {
-    pthread_cond_wait(&pool_nonfull,&poolMutex);
-  }
-  // Add the new connection to the pool
-  pool->connections[pool->end] = conn;
-  pool->end = (pool->end + 1) % pool->size;
-  pool->count++;
-  // Signal the consumer threads that we have at least one new connection
-  pthread_cond_broadcast(&pool_nonempty);
-  pthread_mutex_unlock(&poolMutex);
-}
-
-Connection ConnectionPool_GetConnection(ConnectionPool* pool) {
-  Connection conn;
-  pthread_mutex_lock(&poolMutex);
-  // Wait until buffer is not empty
-  while (pool->count == 0) {
-    pthread_cond_wait(&pool_nonempty,&poolMutex);
-  }
-  // Obtain connection data
-  conn = pool->connections[pool->start];
-  pool->start = (pool->start + 1) % pool->size;
-  pool->count--;
-  // Signal the producer(main thread) that there is space for at least one new connection
-  pthread_cond_signal(&pool_nonfull);
-  pthread_mutex_unlock(&poolMutex);
-  return conn;
-}
-
-void ConnectionPool_Destroy(ConnectionPool* pool) {
-  // TODO:Close remaining client connections
-  free(pool->connections);
-}
+unsigned short queryPortNum,statisticsPortNum;
+unsigned int numThreads,bufferSize;
+static pthread_mutex_t workersMutex = PTHREAD_MUTEX_INITIALIZER;
 
 void usage() {
   fprintf(stderr,"Usage:./whoServer -q queryPortNum -s statisticsPortNum -w numThreads -b bufferSize\n");
@@ -105,8 +40,8 @@ void usage() {
 // Connection consumer
 void* client_thread(void *arg) {
   Connection conn;
-  while (TRUE) {
-    conn = ConnectionPool_GetConnection(&connctionPool);
+  while (running) {
+    conn = ConnectionPool_GetConnection(&connectionPool);
     switch (conn.type) {
       case QUERIES:
         {
@@ -127,25 +62,14 @@ void* client_thread(void *arg) {
             FD_ZERO(&workerFdSet);
             int i,connectedWorkers = 0,maxFd = -1;
             string answer = NULL;
-            // Connect to all the workers
+            // Send the query to all the workers
+            pthread_mutex_lock(&workersMutex);
             for (i = 0;i < totalWorkers;i++) {
-              int wSock;
-              if ((wSock = socket(AF_INET,SOCK_STREAM,0)) < 0) {
-                perror("whoServer could not create socket to communicate with a worker");
-                continue;
-              }
-              struct sockaddr_in workerAddress;
-              workerAddress.sin_family = AF_INET;
-              workerAddress.sin_addr = workers[i].ip;
-              workerAddress.sin_port = htons(workers[i].port);
-              printf("Connecting to worker %s:%d\n",inet_ntoa(workerAddress.sin_addr),workers[i].port);
-              if (connect(wSock,(struct sockaddr*)&workerAddress,sizeof(workerAddress)) < 0) {
-                perror("whoServer could not connect to a worker");
-                close(wSock);
-                continue;
-              }
+              int wSock = workers[i].socketFd;
               // Send him the query
-              send_data_to_socket(wSock,query,strlen(query),BUFFER_SIZE);
+              if (send_data_to_socket(wSock,query,strlen(query),BUFFER_SIZE)) {
+                printf("Thread %ld connected to worker %s:%d for query:%s\n",pthread_self(),inet_ntoa(workers[i].ip),workers[i].port,query);
+              }
               FD_SET(wSock,&workerFdSet);
               maxFd = MAX(maxFd,wSock);
               connectedWorkers++;
@@ -182,15 +106,13 @@ void* client_thread(void *arg) {
                       }
                     }
                     free(workerAns);
-                    close(i);
                     FD_CLR(i,&workerFdSet);
                     connectedWorkers--;
-                  } else {
-                    printf("COULD NOT READ ANSWER FROM WORKER on query %s\n",command);
                   }
                 }
               }
             }
+            pthread_mutex_unlock(&workersMutex);
             if (!strcmp(command,"/diseaseFrequency")) {
               char ans[10];
               sprintf(ans,"%u\n",diseaseFrequencySum);
@@ -226,13 +148,31 @@ void* client_thread(void *arg) {
           statistics = receive_data_from_socket(conn.socketDescriptor,BUFFER_SIZE,TRUE);
           //printf("%s",statistics);
           free(statistics);
+          char numThreadsStr[digits(numThreads) + 1];
+          sprintf(numThreadsStr,"%u",numThreads);
           // Add the newly created worker to the worker's list
           if ((workers = (Worker*)realloc(workers,(totalWorkers + 1)*sizeof(Worker))) == NULL) {
             not_enough_memory();
             exit(EXIT_FAILURE);
           }
           workers[totalWorkers].ip = conn.ip;
-          workers[totalWorkers++].port = port;
+          workers[totalWorkers].port = port;
+          // Establish connection with that worker
+          int wSock;
+          if ((wSock = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+            perror("whoServer could not create socket to communicate with a worker");
+            continue;
+          }
+          struct sockaddr_in workerAddress;
+          workerAddress.sin_family = AF_INET;
+          workerAddress.sin_addr = workers[totalWorkers].ip;
+          workerAddress.sin_port = htons(workers[totalWorkers].port);
+          if (connect(wSock,(struct sockaddr*)&workerAddress,sizeof(workerAddress)) < 0) {
+            perror("whoServer could not connect to a worker");
+            close(wSock);
+            continue;
+          }
+          workers[totalWorkers++].socketFd = wSock;
         }
         break;
       default:
@@ -264,8 +204,6 @@ int main(int argc, char const *argv[]) {
     usage();
     return 1;
   }
-  unsigned short queryPortNum,statisticsPortNum;
-  unsigned int numThreads,bufferSize;
   // Read queryPortNum
   if (!strcmp(argv[1],"-q")) {
     queryPortNum = (short)atoi(argv[2]);
@@ -327,17 +265,8 @@ int main(int argc, char const *argv[]) {
     return 1;
   }
   // Create a connection pool (implemented with circular buffer as producer-consumer problem)
-  ConnectionPool_Initialize(&connctionPool,bufferSize);
+  ConnectionPool_Initialize(&connectionPool,bufferSize,numThreads,client_thread,NULL);
   // Create numThreads to handle connections
-  pthread_t threads[numThreads];
-  unsigned int i;
-  int threadErr;
-  for (i = 0;i < numThreads;i++) {
-    if ((threadErr = pthread_create(&threads[i],NULL,client_thread,NULL))) {
-      thread_error("whoServer thread creation error",threadErr);
-      return 1;
-    }
-  }
   int clientSocket;
   struct sockaddr_in clientAddress;
   memset(&clientAddress,0,sizeof(clientAddress));
@@ -366,7 +295,7 @@ int main(int argc, char const *argv[]) {
           newConn.type = STATISTICS;
           newConn.ip = acceptedAddress.sin_addr;
           newConn.port = ntohs(acceptedAddress.sin_port);
-          ConnectionPool_AddConnection(&connctionPool,newConn);
+          ConnectionPool_AddConnection(&connectionPool,newConn);
           printf("New statistics connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
         } else {
           perror("getsockname");
@@ -389,7 +318,7 @@ int main(int argc, char const *argv[]) {
           newConn.type = QUERIES;
           newConn.ip = acceptedAddress.sin_addr;
           newConn.port = ntohs(acceptedAddress.sin_port);
-          ConnectionPool_AddConnection(&connctionPool,newConn);
+          ConnectionPool_AddConnection(&connectionPool,newConn);
           printf("New queries connection accepted from %s:%d\n",inet_ntoa(acceptedAddress.sin_addr),(int)ntohs(acceptedAddress.sin_port));
         } else {
           perror("getsockname");
@@ -401,15 +330,13 @@ int main(int argc, char const *argv[]) {
   // Close listening sockets
   close(queriesSocket);
   close(statisticsSocket);
-  // Terminate the threads
-  int threadStatus;
-  for (i = 0;i < numThreads;i++) {
-    pthread_cancel(threads[i]);
-    pthread_mutex_unlock(&poolMutex);
-    pthread_join(threads[i],(void**)&threadStatus);
-  }
   // Deallocate connection pool
-  ConnectionPool_Destroy(&connctionPool);
+  ConnectionPool_Destroy(&connectionPool);
+  // Disconnect from all the workers
+  unsigned int i;
+  for (i = 0;i < totalWorkers;i++) {
+    close(workers[i].socketFd);
+  }
   // Deallocate workers
   free(workers);
   return 0;
